@@ -86,7 +86,10 @@ SiameseResult EncoderPacketWindow::Add(SiameseOriginalPacket& packet)
     if (EmergencyDisabled)
         return Siamese_Disabled;
     if (Count >= SIAMESE_MAX_PACKETS)
+    {
+        SIAMESE_DEBUG_BREAK(); // Invalid input
         return Siamese_MaxPacketsReached;
+    }
 
     const unsigned column         = NextColumn;
     const unsigned subwindowCount = (unsigned)Subwindows.size();
@@ -1079,6 +1082,10 @@ SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
         return Siamese_NeedMoreData;
     }
 
+    // Remove any data from the window at this point
+    if (Window.FirstUnremovedElement >= kEncoderRemoveThreshold)
+        Window.RemoveElements();
+
     // Get the number of packets in the window that are in flight (unacked)
     const unsigned unacknowledgedCount = Window.GetUnacknowledgedCount();
 
@@ -1121,10 +1128,6 @@ SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
         }
     }
 #endif // SIAMESE_ENABLE_CAUCHY
-
-    // Remove any data from the window at this point
-    if (Window.FirstUnremovedElement >= kEncoderRemoveThreshold)
-        Window.RemoveElements();
 
     // Advance row index
     const unsigned row = NextRow;
