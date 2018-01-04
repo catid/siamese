@@ -709,7 +709,7 @@ class HARQSimulation
     };
 
     // Number of packets
-    static const unsigned kLastPacket = 10000;
+    static const unsigned kLastPacket = 20000; // Something longer than Siamese max 16K packets to make sure that is tested
 
     // Channel character
     static const unsigned kLossPercent = 10;
