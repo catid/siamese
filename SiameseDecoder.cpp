@@ -2331,19 +2331,6 @@ void CheckedRegionState::DecrementElementCounters(const unsigned elementCount)
 //------------------------------------------------------------------------------
 // RecoveryPacketList
 
-void RecoveryPacketList::Clear()
-{
-    for (RecoveryPacket* recovery = Head, *next; recovery; recovery = next)
-    {
-        next = recovery->Next;
-        TheAllocator->Destruct(recovery);
-    }
-
-    Head = nullptr;
-    Tail = nullptr;
-    RecoveryPacketCount = 0;
-}
-
 void RecoveryPacketList::Insert(RecoveryPacket* recovery)
 {
     RecoveryPacket* prev = Tail;
@@ -2406,26 +2393,6 @@ void RecoveryPacketList::Insert(RecoveryPacket* recovery)
     LastRecovery.SumStartColumn       = recovery->Metadata.ColumnStart;
 }
 
-void RecoveryPacketList::Delete(RecoveryPacket* recovery)
-{
-    RecoveryPacket* prev = recovery->Prev;
-    RecoveryPacket* next = recovery->Next;
-
-    if (prev)
-        prev->Next = next;
-    else
-        Head = next;
-
-    if (next)
-        next->Prev = prev;
-    else
-        Tail = prev;
-
-    --RecoveryPacketCount;
-
-    TheAllocator->Destruct(recovery);
-}
-
 void RecoveryPacketList::DeletePacketsBefore(const unsigned element)
 {
     RecoveryPacket* recovery = Head;
@@ -2439,6 +2406,7 @@ void RecoveryPacketList::DeletePacketsBefore(const unsigned element)
             break;
 
         next = recovery->Next;
+        recovery->Buffer.Free(TheAllocator);
         TheAllocator->Destruct(recovery);
         ++deleteCount;
     }

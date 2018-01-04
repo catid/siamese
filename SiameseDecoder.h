@@ -275,14 +275,8 @@ struct RecoveryPacketList
         return RecoveryPacketCount == 0;
     }
 
-    /// Clear the list, deleting all packets in the list
-    void Clear();
-
     /// Insert recovery packet into sorted list
     void Insert(RecoveryPacket* packet);
-
-    /// Delete the packet from the list and free its memory
-    void Delete(RecoveryPacket* packet);
 
     /// Delete all packets before this element
     void DeletePacketsBefore(const unsigned element);
