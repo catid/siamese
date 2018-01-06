@@ -132,10 +132,13 @@ struct EncoderPacketWindow
     unsigned SumErasedCount = 0;
 
     /// Allocated Subwindows
-    std::vector<EncoderSubwindow*> Subwindows;
+    LightVector<EncoderSubwindow*> Subwindows;
 
     /// Running summations for each lane
     EncoderColumnLane Lanes[kColumnLaneCount];
+
+    /// Temporary workspace reused each time subwindows must be shifted
+    LightVector<EncoderSubwindow*> SubwindowsShift;
 
     /// If input is invalid or we run out of memory, the encoder is disabled
     /// to prevent it from allowing exploits to run or cause crashes
@@ -168,7 +171,7 @@ struct EncoderPacketWindow
     SIAMESE_FORCE_INLINE OriginalPacket* GetWindowElement(unsigned windowElement)
     {
         SIAMESE_DEBUG_ASSERT(windowElement < Count);
-        return &Subwindows[windowElement / kSubwindowSize]->Originals[windowElement % kSubwindowSize];
+        return &(Subwindows.GetRef(windowElement / kSubwindowSize)->Originals[windowElement % kSubwindowSize]);
     }
 
     /// Get element send timestamp from the window, indexed by window offset not column number
@@ -176,7 +179,7 @@ struct EncoderPacketWindow
     SIAMESE_FORCE_INLINE uint32_t* GetWindowElementTimestampPtr(unsigned windowElement)
     {
         SIAMESE_DEBUG_ASSERT(windowElement < Count);
-        return &Subwindows[windowElement / kSubwindowSize]->LastSendMsec[windowElement % kSubwindowSize];
+        return &(Subwindows.GetRef(windowElement / kSubwindowSize)->LastSendMsec[windowElement % kSubwindowSize]);
     }
 
     /// Append a packet to the end of the set

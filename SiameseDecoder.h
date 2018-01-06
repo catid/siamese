@@ -283,6 +283,9 @@ struct RecoveryPacketList
 
     /// Decrement all the element counters by a given amount
     void DecrementElementCounters(const unsigned elementCount);
+
+    /// Delete the given recovery packet from the list - Used only by unit test
+    void Delete(RecoveryPacket* recovery);
 };
 
 
@@ -335,7 +338,7 @@ struct DecoderPacketWindow
     unsigned NextExpectedElement = 0;
 
     /// Allocated Subwindows
-    std::vector<DecoderSubwindow*> Subwindows;
+    LightVector<DecoderSubwindow*> Subwindows;
 
     /// Set of lanes we're maintaining
     DecoderColumnLane Lanes[kColumnLaneCount];
@@ -343,11 +346,14 @@ struct DecoderPacketWindow
     unsigned SumColumnCount = 0;
 
     /// Packets returned by RecoverOriginalPackets() on success
-    std::vector<SiameseOriginalPacket> RecoveredPackets;
+    LightVector<SiameseOriginalPacket> RecoveredPackets;
     bool HasRecoveredPackets = false;
 
     /// List of columns that have been recovered
-    std::vector<unsigned> RecoveredColumns;
+    LightVector<unsigned> RecoveredColumns;
+
+    /// Temporary workspace reused each time subwindows must be shifted
+    LightVector<DecoderSubwindow*> SubwindowsShift;
 
     /// If input is invalid or we run out of memory, the decoder is disabled
     /// to prevent it from allowing exploits to run or cause crashes
@@ -396,7 +402,7 @@ struct DecoderPacketWindow
     SIAMESE_FORCE_INLINE OriginalPacket* GetWindowElement(unsigned windowElement)
     {
         SIAMESE_DEBUG_ASSERT(windowElement < Count);
-        return &Subwindows[windowElement / kSubwindowSize]->Originals[windowElement % kSubwindowSize];
+        return &(Subwindows.GetRef(windowElement / kSubwindowSize)->Originals[windowElement % kSubwindowSize]);
     }
 
     /// Returns the number of lost packets in the given range (inclusive)
@@ -475,7 +481,7 @@ struct RecoveryMatrixState
         /// must be updated to reflect their growth
         unsigned MatrixColumnCount = 0;
     };
-    std::vector<RowInfo> Rows;
+    LightVector<RowInfo> Rows;
 
     struct ColumnInfo
     {
@@ -488,7 +494,7 @@ struct RecoveryMatrixState
         /// Column multiplier
         uint8_t CX = 0;
     };
-    std::vector<ColumnInfo> Columns;
+    LightVector<ColumnInfo> Columns;
 
     /// NextCheckStart value from the last time we populated columns
     unsigned PreviousNextCheckStart = 0;
@@ -498,7 +504,7 @@ struct RecoveryMatrixState
 
     /// Array of pivots used for when rows need to be swapped
     /// This allows us to swap indices rather than swap whole rows to reduce memory accesses
-    std::vector<unsigned> Pivots;
+    LightVector<unsigned> Pivots;
 
     /// Pivot to resume at when we get more data
     unsigned GEResumePivot = 0;

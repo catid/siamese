@@ -457,14 +457,22 @@ bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const Recov
     if (!Window.HasRecoveredPackets)
     {
         Window.HasRecoveredPackets = true;
-        Window.RecoveredPackets.clear();
+        Window.RecoveredPackets.Clear();
     }
 
     original.Data = windowOriginal->Buffer.Data + newHeaderBytes;
     SIAMESE_DEBUG_ASSERT(original.DataBytes == windowOriginal->Buffer.Bytes - headerBytes);
 
-    Window.RecoveredPackets.push_back(original);
-    Window.RecoveredColumns.push_back(metadata.ColumnStart);
+    if (!Window.RecoveredPackets.Append(original))
+    {
+        SIAMESE_DEBUG_BREAK(); // OOM
+        return false;
+    }
+    if (!Window.RecoveredColumns.Append(metadata.ColumnStart))
+    {
+        SIAMESE_DEBUG_BREAK(); // OOM
+        return false;
+    }
 
     // If the added element is somewhere inside the previously checked region:
     if (element >= CheckedRegion.ElementStart &&
@@ -576,11 +584,11 @@ SiameseResult Decoder::Decode(SiameseOriginalPacket** packetsPtrOut, unsigned* c
     if (Window.HasRecoveredPackets)
     {
         Window.HasRecoveredPackets = false;
-        SIAMESE_DEBUG_ASSERT(!Window.RecoveredPackets.empty());
+        SIAMESE_DEBUG_ASSERT(Window.RecoveredPackets.GetSize() != 0);
         if (packetsPtrOut)
         {
-            *packetsPtrOut = &Window.RecoveredPackets[0];
-            *countOut      = (unsigned)Window.RecoveredPackets.size();
+            *packetsPtrOut = Window.RecoveredPackets.GetPtr(0);
+            *countOut      = Window.RecoveredPackets.GetSize();
         }
         return Siamese_Success;
     }
@@ -625,8 +633,8 @@ SiameseResult Decoder::Decode(SiameseOriginalPacket** packetsPtrOut, unsigned* c
             {
                 if (packetsPtrOut)
                 {
-                    *packetsPtrOut = &Window.RecoveredPackets[0];
-                    *countOut      = (unsigned)Window.RecoveredPackets.size();
+                    *packetsPtrOut = Window.RecoveredPackets.GetPtr(0);
+                    *countOut      = Window.RecoveredPackets.GetSize();
                 }
                 return Siamese_Success;
             }
@@ -746,7 +754,7 @@ SiameseResult Decoder::DecodeCheckedRegion()
 
 bool Decoder::EliminateOriginalData()
 {
-    SIAMESE_DEBUG_ASSERT(CheckedRegion.LostCount == (unsigned)RecoveryMatrix.Columns.size());
+    SIAMESE_DEBUG_ASSERT(CheckedRegion.LostCount == RecoveryMatrix.Columns.GetSize());
 
     std::ostringstream* pDebugMsg = nullptr;
 
@@ -756,15 +764,15 @@ bool Decoder::EliminateOriginalData()
     // successfully received that we need to eliminate from the recovery sums
 
     const unsigned rows = CheckedRegion.RecoveryCount;
-    SIAMESE_DEBUG_ASSERT(CheckedRegion.RecoveryCount == (unsigned)RecoveryMatrix.Rows.size());
+    SIAMESE_DEBUG_ASSERT(CheckedRegion.RecoveryCount == RecoveryMatrix.Rows.GetSize());
 
     // Eliminate data in sorted row order regardless of pivot order:
     for (unsigned matrixRowIndex = 0; matrixRowIndex < rows; ++matrixRowIndex)
     {
-        if (!RecoveryMatrix.Rows[matrixRowIndex].UsedForSolution)
+        if (!RecoveryMatrix.Rows.GetRef(matrixRowIndex).UsedForSolution)
             continue;
 
-        RecoveryPacket* recovery        = RecoveryMatrix.Rows[matrixRowIndex].Recovery;
+        RecoveryPacket* recovery        = RecoveryMatrix.Rows.GetRef(matrixRowIndex).Recovery;
         const RecoveryMetadata metadata = recovery->Metadata;
         const unsigned elementStart     = recovery->ElementStart;
         const unsigned elementEnd       = recovery->ElementEnd;
@@ -962,21 +970,21 @@ bool Decoder::MultiplyLowerTriangle()
     // Multiply lower triangle following solution order from left to right:
     for (unsigned col_i = 0; col_i < columns - 1; ++col_i)
     {
-        const unsigned matrixRowIndex_i = RecoveryMatrix.Pivots[col_i];
-        const GrowingAlignedDataBuffer& recovery_i = RecoveryMatrix.Rows[matrixRowIndex_i].Recovery->Buffer;
+        const unsigned matrixRowIndex_i = RecoveryMatrix.Pivots.GetRef(col_i);
+        const GrowingAlignedDataBuffer& recovery_i = RecoveryMatrix.Rows.GetRef(matrixRowIndex_i).Recovery->Buffer;
         const uint8_t* srcData  = recovery_i.Data;
         const unsigned srcBytes = recovery_i.Bytes;
         SIAMESE_DEBUG_ASSERT(srcData && srcBytes > 0);
 
         for (unsigned col_j = col_i + 1; col_j < columns; ++col_j)
         {
-            const unsigned matrixRowIndex_j = RecoveryMatrix.Pivots[col_j];
+            const unsigned matrixRowIndex_j = RecoveryMatrix.Pivots.GetRef(col_j);
             const uint8_t y = RecoveryMatrix.Matrix.Get(matrixRowIndex_j, col_i);
 
             if (y == 0)
                 continue;
 
-            GrowingAlignedDataBuffer& recovery_j = RecoveryMatrix.Rows[matrixRowIndex_j].Recovery->Buffer;
+            GrowingAlignedDataBuffer& recovery_j = RecoveryMatrix.Rows.GetRef(matrixRowIndex_j).Recovery->Buffer;
             SIAMESE_DEBUG_ASSERT(recovery_j.Data && recovery_j.Bytes > 0);
 
             // Make room for the summation
@@ -996,16 +1004,16 @@ SiameseResult Decoder::BackSubstitution()
     // while streaming is mostly zero
 
     const unsigned columns = CheckedRegion.LostCount;
-    Window.RecoveredPackets.resize(columns);
+    Window.RecoveredPackets.SetSize_NoCopy(columns);
 
     bool iterateNextExpected = false;
 
     // For each column starting with the right-most column:
     for (int col_i = columns - 1; col_i >= 0; --col_i)
     {
-        const unsigned matrixRowIndex = RecoveryMatrix.Pivots[col_i];
-        OriginalPacket* original      = RecoveryMatrix.Columns[col_i].Original;
-        RecoveryPacket* recovery      = RecoveryMatrix.Rows[matrixRowIndex].Recovery;
+        const unsigned matrixRowIndex = RecoveryMatrix.Pivots.GetRef(col_i);
+        OriginalPacket* original      = RecoveryMatrix.Columns.GetRef(col_i).Original;
+        RecoveryPacket* recovery      = RecoveryMatrix.Rows.GetRef(matrixRowIndex).Recovery;
         SIAMESE_DEBUG_ASSERT(original->Column == (unsigned)col_i && original->Buffer.Bytes == 0);
 
         uint8_t* buffer = recovery->Buffer.Data;
@@ -1047,18 +1055,23 @@ SiameseResult Decoder::BackSubstitution()
         uint8_t* oldOriginalData = original->Buffer.Data;
         original->Buffer.Data    = buffer;
         original->Buffer.Bytes   = bufferBytes;
-        original->Column         = RecoveryMatrix.Columns[col_i].Column;
+        original->Column         = RecoveryMatrix.Columns.GetRef(col_i).Column;
         original->HeaderBytes    = (unsigned)headerBytes;
         recovery->Buffer.Data    = oldOriginalData;
         recovery->Buffer.Bytes   = 0;
 
         // Write recovered packet data
-        SiameseOriginalPacket& recovered = Window.RecoveredPackets[col_i];
-        recovered.Data        = buffer + headerBytes;
-        recovered.DataBytes   = length;
-        recovered.PacketNum   = original->Column;
+        SiameseOriginalPacket* recoveredPtr = Window.RecoveredPackets.GetPtr(col_i);
+        recoveredPtr->Data      = buffer + headerBytes;
+        recoveredPtr->DataBytes = length;
+        recoveredPtr->PacketNum = original->Column;
 
-        Window.RecoveredColumns.push_back(original->Column);
+        if (!Window.RecoveredColumns.Append(original->Column))
+        {
+            Window.EmergencyDisabled = true;
+            SIAMESE_DEBUG_BREAK(); // OOM
+            return Siamese_Disabled;
+        }
 
         Logger.Trace("GE Decoded: Column=", original->Column, " Row=", recovery->Metadata.Row);
 
@@ -1067,13 +1080,13 @@ SiameseResult Decoder::BackSubstitution()
         // Eliminate from all other pivot rows above it:
         for (unsigned col_j = 0; col_j < (unsigned)col_i; ++col_j)
         {
-            unsigned pivot_j = RecoveryMatrix.Pivots[col_j];
+            unsigned pivot_j = RecoveryMatrix.Pivots.GetRef(col_j);
             const uint8_t x  = RecoveryMatrix.Matrix.Get(pivot_j, col_i);
 
             if (x == 0)
                 continue;
 
-            const GrowingAlignedDataBuffer& buffer_j = RecoveryMatrix.Rows[pivot_j].Recovery->Buffer;
+            const GrowingAlignedDataBuffer& buffer_j = RecoveryMatrix.Rows.GetRef(pivot_j).Recovery->Buffer;
             SIAMESE_DEBUG_ASSERT(buffer_j.Data && buffer_j.Bytes > 0);
 
             unsigned addBytes = bufferBytes;
@@ -1142,9 +1155,9 @@ bool DecoderPacketWindow::MarkGotColumn(unsigned column)
         return false;
     }
 
-    DecoderSubwindow& subwindow = *Subwindows[element / kSubwindowSize];
-    subwindow.GotCount++;
-    subwindow.Got.Set(element % kSubwindowSize);
+    DecoderSubwindow* subwindow = Subwindows.GetRef(element / kSubwindowSize);
+    subwindow->GotCount++;
+    subwindow->Got.Set(element % kSubwindowSize);
 
     return (element == NextExpectedElement);
 }
@@ -1158,7 +1171,7 @@ unsigned DecoderPacketWindow::RangeLostPackets(unsigned elementStart, unsigned e
 
     // Accumulate first partial subwindow (if any)
     unsigned subwindowStart = elementStart / kSubwindowSize;
-    SIAMESE_DEBUG_ASSERT(subwindowStart < (unsigned)Subwindows.size());
+    SIAMESE_DEBUG_ASSERT(subwindowStart < Subwindows.GetSize());
     const unsigned bitStart = elementStart % kSubwindowSize;
     if (bitStart > 0)
     {
@@ -1166,22 +1179,22 @@ unsigned DecoderPacketWindow::RangeLostPackets(unsigned elementStart, unsigned e
         if (bitEnd > kSubwindowSize)
             bitEnd = kSubwindowSize;
         const unsigned bitMaxSet = bitEnd - bitStart; // Bit count in range
-        lostCount += bitMaxSet - Subwindows[subwindowStart]->Got.RangePopcount(bitStart, bitEnd);
+        lostCount += bitMaxSet - Subwindows.GetRef(subwindowStart)->Got.RangePopcount(bitStart, bitEnd);
         ++subwindowStart;
     }
 
     // Accumulate whole subwindows of losses
     const unsigned subwindowEnd = elementEnd / kSubwindowSize;
-    SIAMESE_DEBUG_ASSERT(subwindowEnd <= (unsigned)Subwindows.size());
+    SIAMESE_DEBUG_ASSERT(subwindowEnd <= Subwindows.GetSize());
     for (unsigned i = subwindowStart; i < subwindowEnd; ++i)
-        lostCount += kSubwindowSize - Subwindows[i]->GotCount;
+        lostCount += kSubwindowSize - Subwindows.GetRef(i)->GotCount;
 
     // Accumulate last partial subwindow (if any, common case)
     if (subwindowEnd >= subwindowStart)
     {
         const unsigned lastSubwindowBits = elementEnd - subwindowEnd * kSubwindowSize;
         if (lastSubwindowBits > 0)
-            lostCount += lastSubwindowBits - Subwindows[subwindowEnd]->Got.RangePopcount(0, lastSubwindowBits);
+            lostCount += lastSubwindowBits - Subwindows.GetRef(subwindowEnd)->Got.RangePopcount(0, lastSubwindowBits);
     }
 
     return lostCount;
@@ -1195,18 +1208,18 @@ unsigned DecoderPacketWindow::FindNextLostElement(unsigned elementStart)
     const unsigned subwindowEnd = (Count + kSubwindowSize - 1) / kSubwindowSize;
     unsigned subwindowIndex = elementStart / kSubwindowSize;
     unsigned bitIndex = elementStart % kSubwindowSize;
-    SIAMESE_DEBUG_ASSERT(subwindowEnd <= (unsigned)Subwindows.size());
-    SIAMESE_DEBUG_ASSERT(subwindowIndex < (unsigned)Subwindows.size());
+    SIAMESE_DEBUG_ASSERT(subwindowEnd <= Subwindows.GetSize());
+    SIAMESE_DEBUG_ASSERT(subwindowIndex < Subwindows.GetSize());
 
     while (subwindowIndex < subwindowEnd)
     {
         // If there may be any lost packets in this subwindow:
-        if (Subwindows[subwindowIndex]->GotCount < kSubwindowSize)
+        if (Subwindows.GetRef(subwindowIndex)->GotCount < kSubwindowSize)
         {
             for (;;)
             {
                 // Seek next clear bit
-                bitIndex = Subwindows[subwindowIndex]->Got.FindFirstClear(bitIndex);
+                bitIndex = Subwindows.GetRef(subwindowIndex)->Got.FindFirstClear(bitIndex);
 
                 // If there were none, skip this subwindow
                 if (bitIndex >= kSubwindowSize)
@@ -1239,18 +1252,18 @@ unsigned DecoderPacketWindow::FindNextGotElement(unsigned elementStart)
     const unsigned subwindowEnd = (Count + kSubwindowSize - 1) / kSubwindowSize;
     unsigned subwindowIndex = elementStart / kSubwindowSize;
     unsigned bitIndex = elementStart % kSubwindowSize;
-    SIAMESE_DEBUG_ASSERT(subwindowEnd <= (unsigned)Subwindows.size());
-    SIAMESE_DEBUG_ASSERT(subwindowIndex < (unsigned)Subwindows.size());
+    SIAMESE_DEBUG_ASSERT(subwindowEnd <= Subwindows.GetSize());
+    SIAMESE_DEBUG_ASSERT(subwindowIndex < Subwindows.GetSize());
 
     while (subwindowIndex < subwindowEnd)
     {
         // If there may be any got packets in this subwindow:
-        if (Subwindows[subwindowIndex]->GotCount > 0)
+        if (Subwindows.GetRef(subwindowIndex)->GotCount > 0)
         {
             for (;;)
             {
                 // Seek next set bit
-                bitIndex = Subwindows[subwindowIndex]->Got.FindFirstSet(bitIndex);
+                bitIndex = Subwindows.GetRef(subwindowIndex)->Got.FindFirstSet(bitIndex);
 
                 // If there were none, skip this subwindow
                 if (bitIndex >= kSubwindowSize)
@@ -1295,20 +1308,23 @@ bool DecoderPacketWindow::GrowWindow(const unsigned windowElementEnd)
 {
     // Note: Adding a buffer of lane count to create space ahead for snapshots
     // as a subwindow is filled and we need to store its snapshot
-    const unsigned subwindowCount   = (unsigned)Subwindows.size();
+    const unsigned subwindowCount   = Subwindows.GetSize();
     const unsigned subwindowsNeeded = (windowElementEnd + kColumnLaneCount + kSubwindowSize - 1) / kSubwindowSize;
 
     if (subwindowsNeeded > subwindowCount)
     {
         // Note resizing larger will keep old data in the vector
-        Subwindows.resize(subwindowsNeeded);
+        if (!Subwindows.SetSize_Copy(subwindowsNeeded))
+            return false;
 
+        // For each subwindow to initialize:
         for (unsigned i = subwindowCount; i < subwindowsNeeded; ++i)
         {
-            Subwindows[i] = TheAllocator->Construct<DecoderSubwindow>();
-
-            if (!Subwindows[i])
+            DecoderSubwindow* subwindow = TheAllocator->Construct<DecoderSubwindow>();
+            if (!subwindow)
                 return false; // Out of memory
+
+            Subwindows.GetRef(i) = subwindow;
         }
     }
 
@@ -1343,10 +1359,10 @@ SiameseResult DecoderPacketWindow::AddOriginal(const SiameseOriginalPacket& pack
     }
 
     // Grab the window element for this packet
-    DecoderSubwindow& subwindow     = *Subwindows[element / kSubwindowSize];
+    DecoderSubwindow* subwindowPtr  = Subwindows.GetRef(element / kSubwindowSize);
     const unsigned subwindowElement = element % kSubwindowSize;
 
-    OriginalPacket* original = &subwindow.Originals[subwindowElement];
+    OriginalPacket* original = &subwindowPtr->Originals[subwindowElement];
     if (original->Buffer.Bytes > 0)
     {
         Logger.Debug("Ignored a packet already received: ", packet.PacketNum);
@@ -1364,8 +1380,8 @@ SiameseResult DecoderPacketWindow::AddOriginal(const SiameseOriginalPacket& pack
     SIAMESE_DEBUG_ASSERT(original->Buffer.Bytes > 1);
 
     // Increment the number of packets filled in for this subwindow
-    subwindow.GotCount++;
-    subwindow.Got.Set(subwindowElement);
+    subwindowPtr->GotCount++;
+    subwindowPtr->Got.Set(subwindowElement);
 
     // If this was the next expected element:
     if (element == NextExpectedElement)
@@ -1392,13 +1408,13 @@ SiameseResult DecoderPacketWindow::AddOriginal(const SiameseOriginalPacket& pack
 
 bool DecoderPacketWindow::PlugSumHoles(unsigned elementStart)
 {
-    const unsigned recoveredCount = (unsigned)RecoveredColumns.size();
+    const unsigned recoveredCount = RecoveredColumns.GetSize();
     SIAMESE_DEBUG_ASSERT(recoveredCount > 0);
 
     // Use previously recovered packets to plug holes in the sums:
     for (unsigned i = 0; i < recoveredCount; ++i)
     {
-        const unsigned column  = RecoveredColumns[i];
+        const unsigned column  = RecoveredColumns.GetRef(i);
         const unsigned element = ColumnToElement(column);
 
         // If recovered data was far in the past:
@@ -1451,7 +1467,7 @@ bool DecoderPacketWindow::PlugSumHoles(unsigned elementStart)
     }
 
     // Clear recovered packets to avoid double-plugging holes in the sums
-    RecoveredColumns.clear();
+    RecoveredColumns.Clear();
 
     return true;
 }
@@ -1473,7 +1489,7 @@ void DecoderPacketWindow::ResetSums(unsigned elementStart)
         }
     }
 
-    RecoveredColumns.clear();
+    RecoveredColumns.Clear();
 }
 
 bool DecoderPacketWindow::StartSums(unsigned elementStart, unsigned bufferBytes)
@@ -1514,7 +1530,7 @@ bool DecoderPacketWindow::StartSums(unsigned elementStart, unsigned bufferBytes)
     }
 
     // If we have previously recovered packets, use them to plug holes in the sums:
-    if (!RecoveredColumns.empty() && !PlugSumHoles(elementStart))
+    if (RecoveredColumns.GetSize() != 0 && !PlugSumHoles(elementStart))
         return false;
 
     return true;
@@ -1711,6 +1727,7 @@ void DecoderPacketWindow::RemoveElements()
     const unsigned firstKeptSubwindow  = removalPoint.FirstKeptElement / kSubwindowSize;
     const unsigned removedElementCount = firstKeptSubwindow * kSubwindowSize;
     SIAMESE_DEBUG_ASSERT(firstKeptSubwindow >= 1);
+    SIAMESE_DEBUG_ASSERT(Subwindows.GetSize() > firstKeptSubwindow);
     SIAMESE_DEBUG_ASSERT(removedElementCount % kColumnLaneCount == 0);
     SIAMESE_DEBUG_ASSERT(removedElementCount <= NextExpectedElement);
 
@@ -1773,11 +1790,40 @@ void DecoderPacketWindow::RemoveElements()
 
     // Reset windows before putting them on the back
     for (unsigned i = 0; i < firstKeptSubwindow; ++i)
-        Subwindows[i]->Reset();
+        Subwindows.GetRef(i)->Reset();
 
-    // Shift kept subwindows to the front of the vector
-    // Note: Removed entries get rotated to the end
-    std::rotate(Subwindows.begin(), Subwindows.begin() + firstKeptSubwindow, Subwindows.end());
+    // Shift kept subwindows to the front of the vector:
+
+    // Resize a temporary buffer for removed subwindows
+    if (!SubwindowsShift.SetSize_NoCopy(firstKeptSubwindow))
+    {
+        SIAMESE_DEBUG_BREAK(); // OOM
+        EmergencyDisabled = true;
+        return;
+    }
+
+    // Store removed subwindows temporarily
+    memcpy(
+        SubwindowsShift.GetPtr(0),
+        Subwindows.GetPtr(0),
+        firstKeptSubwindow * sizeof(DecoderSubwindow*)
+    );
+
+    const unsigned subwindowsShifted = Subwindows.GetSize() - firstKeptSubwindow;
+
+    // Shift subwindows to front that are being kept
+    memmove(
+        Subwindows.GetPtr(0),
+        Subwindows.GetPtr(firstKeptSubwindow),
+        subwindowsShifted * sizeof(DecoderSubwindow*)
+    );
+
+    // Removed subwindows are moved to the end (unordered) for later reuse
+    memcpy(
+        Subwindows.GetPtr(subwindowsShifted),
+        SubwindowsShift.GetPtr(0),
+        firstKeptSubwindow * sizeof(DecoderSubwindow*)
+    );
 
     // Update the count of elements in the window
     SIAMESE_DEBUG_ASSERT(Count >= removedElementCount);
@@ -1785,7 +1831,7 @@ void DecoderPacketWindow::RemoveElements()
 
     // Roll up the ColumnStart member
     ColumnStart = ElementToColumn(removedElementCount);
-    SIAMESE_DEBUG_ASSERT(ColumnStart == Subwindows[0]->Originals[0].Column || Subwindows[0]->Originals[0].Buffer.Bytes == 0);
+    SIAMESE_DEBUG_ASSERT(ColumnStart == Subwindows.GetRef(0)->Originals[0].Column || Subwindows.GetRef(0)->Originals[0].Buffer.Bytes == 0);
 
     // Roll up the FirstUnremovedElement member
     SIAMESE_DEBUG_ASSERT(NextExpectedElement >= removedElementCount);
@@ -1803,9 +1849,9 @@ void DecoderPacketWindow::RemoveElements()
 
 void RecoveryMatrixState::Reset()
 {
-    Columns.clear();
-    Rows.clear();
-    Pivots.clear();
+    Columns.Clear();
+    Rows.Clear();
+    Pivots.Clear();
 
     Matrix.Clear();
 
@@ -1826,7 +1872,7 @@ void RecoveryMatrixState::PopulateColumns(const unsigned oldColumns, const unsig
     if (oldColumns >= newColumns)
         return;
 
-    Columns.resize(newColumns);
+    Columns.SetSize_Copy(newColumns);
 
     // Resume adding from the last stop point
     unsigned elementStart     = PreviousNextCheckStart;
@@ -1847,17 +1893,17 @@ void RecoveryMatrixState::PopulateColumns(const unsigned oldColumns, const unsig
 
     while (subwindowIndex < subwindowEnd)
     {
-        SIAMESE_DEBUG_ASSERT(subwindowIndex < (unsigned)Window->Subwindows.size());
+        SIAMESE_DEBUG_ASSERT(subwindowIndex < Window->Subwindows.GetSize());
 
-        DecoderSubwindow& subwindow = *Window->Subwindows[subwindowIndex];
+        DecoderSubwindow* subwindowPtr = Window->Subwindows.GetRef(subwindowIndex);
 
         // If there may be any lost packets in this subwindow:
-        if (subwindow.GotCount < kSubwindowSize)
+        if (subwindowPtr->GotCount < kSubwindowSize)
         {
             do
             {
                 // Seek next clear bit
-                bitIndex = subwindow.Got.FindFirstClear(bitIndex);
+                bitIndex = subwindowPtr->Got.FindFirstClear(bitIndex);
 
                 // If there were none, skip this subwindow
                 if (bitIndex >= kSubwindowSize)
@@ -1867,14 +1913,14 @@ void RecoveryMatrixState::PopulateColumns(const unsigned oldColumns, const unsig
                 const unsigned element = subwindowIndex * kSubwindowSize + bitIndex;
                 SIAMESE_DEBUG_ASSERT(element < elementEnd);
 
-                ColumnInfo& columnInfo = Columns[column];
-                columnInfo.Column      = Window->ElementToColumn(element);
-                columnInfo.Original    = &subwindow.Originals[bitIndex];
-                columnInfo.CX          = GetColumnValue(columnInfo.Column);
+                ColumnInfo* columnPtr = Columns.GetPtr(column);
+                columnPtr->Column     = Window->ElementToColumn(element);
+                columnPtr->Original   = &subwindowPtr->Originals[bitIndex];
+                columnPtr->CX         = GetColumnValue(columnPtr->Column);
 
                 // Point lost original packet to recovery matrix column
-                SIAMESE_DEBUG_ASSERT(columnInfo.Original->Buffer.Bytes == 0);
-                columnInfo.Original->Column = column;
+                SIAMESE_DEBUG_ASSERT(columnPtr->Original->Buffer.Bytes == 0);
+                columnPtr->Original->Column = column;
 
                 // If we just added the last column:
                 if (++column >= newColumns)
@@ -1891,6 +1937,7 @@ void RecoveryMatrixState::PopulateColumns(const unsigned oldColumns, const unsig
     }
 
     SIAMESE_DEBUG_BREAK(); // Should never get here
+    Window->EmergencyDisabled = true;
 }
 
 void RecoveryMatrixState::PopulateRows(const unsigned oldRows, const unsigned newRows)
@@ -1898,21 +1945,21 @@ void RecoveryMatrixState::PopulateRows(const unsigned oldRows, const unsigned ne
     if (oldRows >= newRows)
         return;
 
-    Rows.resize(newRows);
+    Rows.SetSize_Copy(newRows);
 
     RecoveryPacket* recovery;
     if (oldRows > 0)
-        recovery = Rows[oldRows - 1].Recovery->Next;
+        recovery = Rows.GetRef(oldRows - 1).Recovery->Next;
     else
         recovery = CheckedRegion->FirstRecovery;
     SIAMESE_DEBUG_ASSERT(recovery);
 
     for (unsigned rowIndex = oldRows; rowIndex < newRows; ++rowIndex, recovery = recovery->Next)
     {
-        RowInfo& rowInfo = Rows[rowIndex];
-        rowInfo.Recovery          = recovery;
-        rowInfo.UsedForSolution   = false;
-        rowInfo.MatrixColumnCount = recovery->LostCount;
+        RowInfo* rowPtr = Rows.GetPtr(rowIndex);
+        rowPtr->Recovery          = recovery;
+        rowPtr->UsedForSolution   = false;
+        rowPtr->MatrixColumnCount = recovery->LostCount;
 
         Logger.Info("*** Recovery packet: start=", recovery->Metadata.ColumnStart,  " Sum_Count=",  recovery->Metadata.SumCount,  " LDPC_Count=",  recovery->Metadata.LDPCCount);
     }
@@ -1924,8 +1971,8 @@ bool RecoveryMatrixState::GenerateMatrix()
     const unsigned rows    = CheckedRegion->RecoveryCount;
     SIAMESE_DEBUG_ASSERT(rows >= columns);
 
-    unsigned oldRows    = (unsigned)Rows.size();
-    unsigned oldColumns = (unsigned)Columns.size();
+    unsigned oldRows    = (unsigned)Rows.GetSize();
+    unsigned oldColumns = (unsigned)Columns.GetSize();
 
     // If we missed a reset somewhere:
     if (rows < oldRows || columns < oldColumns)
@@ -1966,7 +2013,7 @@ bool RecoveryMatrixState::GenerateMatrix()
     // For each row to fill:
     for (unsigned i = startRow; i < rows; ++i, rowData += stride)
     {
-        RecoveryPacket* recovery        = Rows[i].Recovery;
+        RecoveryPacket* recovery        = Rows.GetRef(i).Recovery;
         const RecoveryMetadata metadata = recovery->Metadata;
 
 #ifdef SIAMESE_ENABLE_CAUCHY
@@ -1985,7 +2032,7 @@ bool RecoveryMatrixState::GenerateMatrix()
             // Fill columns from left for new rows:
             for (unsigned j = startMatrixColumn; j < columns; ++j)
             {
-                const unsigned column  = Columns[j].Column;
+                const unsigned column  = Columns.GetRef(j).Column;
                 SIAMESE_DEBUG_ASSERT(column >= metadata.ColumnStart);
                 const unsigned element = SubtractColumns(column, metadata.ColumnStart);
 
@@ -2026,7 +2073,7 @@ bool RecoveryMatrixState::GenerateMatrix()
         // Fill columns from left for new rows:
         for (unsigned j = startMatrixColumn; j < columns; ++j)
         {
-            const unsigned column  = Columns[j].Column;
+            const unsigned column  = Columns.GetRef(j).Column;
             SIAMESE_DEBUG_ASSERT(column >= metadata.ColumnStart);
             const unsigned element = SubtractColumns(column, metadata.ColumnStart);
 
@@ -2042,7 +2089,7 @@ bool RecoveryMatrixState::GenerateMatrix()
                 *pDebugMsg << column << " ";
 
             // Generate opcode and parameters
-            const uint8_t CX      = Columns[j].CX;
+            const uint8_t CX      = Columns.GetRef(j).CX;
             const uint8_t CX2     = gf256_sqr(CX);
             const unsigned lane   = column % kColumnLaneCount;
             const unsigned opcode = GetRowOpcode(lane, metadata.Row);
@@ -2106,9 +2153,9 @@ bool RecoveryMatrixState::GenerateMatrix()
     } // for each recovery row
 
     // Fill in revealed column pivots with their own value
-    Pivots.resize(rows);
+    Pivots.SetSize_Copy(rows);
     for (unsigned i = oldRows; i < rows; ++i)
-        Pivots[i] = i;
+        Pivots.GetRef(i) = i;
 
     // If we have already performed some GE, then we need to eliminate new
     // row data and we need to carry on elimination for new columns
@@ -2140,8 +2187,8 @@ bool RecoveryMatrixState::GenerateMatrix()
                 break;
         }
         const unsigned expectedLossCount = j;
-        SIAMESE_DEBUG_ASSERT(Rows[i].Recovery->LostCount >= expectedLossCount || GEResumePivot > 0);
-        SIAMESE_DEBUG_ASSERT(Rows[i].MatrixColumnCount >= expectedLossCount);
+        SIAMESE_DEBUG_ASSERT(Rows.GetRef(i).Recovery->LostCount >= expectedLossCount || GEResumePivot > 0);
+        SIAMESE_DEBUG_ASSERT(Rows.GetRef(i).MatrixColumnCount >= expectedLossCount);
     }
 #endif
 
@@ -2163,12 +2210,12 @@ void RecoveryMatrixState::ResumeGE(const unsigned oldRows, const unsigned rows)
     for (unsigned pivot_i = 0; pivot_i < GEResumePivot; ++pivot_i)
     {
         // Get the row for that pivot
-        const unsigned matrixRowIndex_i = Pivots[pivot_i];
+        const unsigned matrixRowIndex_i = Pivots.GetRef(pivot_i);
         const uint8_t* ge_row = Matrix.Data + stride * matrixRowIndex_i;
         const uint8_t val_i   = ge_row[pivot_i];
         SIAMESE_DEBUG_ASSERT(val_i != 0);
 
-        const unsigned pivotColumnCount = Rows[matrixRowIndex_i].MatrixColumnCount;
+        const unsigned pivotColumnCount = Rows.GetRef(matrixRowIndex_i).MatrixColumnCount;
 
         uint8_t* rem_row = Matrix.Data + stride * oldRows;
 
@@ -2178,10 +2225,10 @@ void RecoveryMatrixState::ResumeGE(const unsigned oldRows, const unsigned rows)
             if (EliminateRow(ge_row, rem_row, pivot_i, pivotColumnCount, val_i))
             {
                 // Grow the column count of this row if we just filled it in on the right
-                if (Rows[newRowIndex].MatrixColumnCount < pivotColumnCount)
-                    Rows[newRowIndex].MatrixColumnCount = pivotColumnCount;
+                if (Rows.GetRef(newRowIndex).MatrixColumnCount < pivotColumnCount)
+                    Rows.GetRef(newRowIndex).MatrixColumnCount = pivotColumnCount;
             }
-            SIAMESE_DEBUG_ASSERT(Pivots[newRowIndex] == newRowIndex);
+            SIAMESE_DEBUG_ASSERT(Pivots.GetRef(newRowIndex) == newRowIndex);
         }
     }
 }
@@ -2206,9 +2253,9 @@ bool RecoveryMatrixState::GaussianElimination()
         if (val_i == 0)
             return PivotedGaussianElimination(pivot_i);
 
-        RowInfo& rowInfo = Rows[pivot_i];
-        rowInfo.UsedForSolution = true;
-        const unsigned pivotColumnCount = rowInfo.MatrixColumnCount;
+        RowInfo* rowPtr = Rows.GetPtr(pivot_i);
+        rowPtr->UsedForSolution = true;
+        const unsigned pivotColumnCount = rowPtr->MatrixColumnCount;
 
         uint8_t* rem_row = ge_row;
 
@@ -2248,7 +2295,7 @@ bool RecoveryMatrixState::PivotedGaussianElimination(unsigned pivot_i)
 UsePivoting:
         for (; pivot_j < rows; ++pivot_j)
         {
-            const unsigned matrixRowIndex_j = Pivots[pivot_j];
+            const unsigned matrixRowIndex_j = Pivots.GetRef(pivot_j);
             const uint8_t* ge_row = Matrix.Data + stride * matrixRowIndex_j;
             const uint8_t val_i = ge_row[pivot_i];
             if (val_i == 0)
@@ -2257,14 +2304,14 @@ UsePivoting:
             // Swap out the pivot index for this one
             if (pivot_i != pivot_j)
             {
-                const unsigned temp = Pivots[pivot_i];
-                Pivots[pivot_i] = Pivots[pivot_j];
-                Pivots[pivot_j] = temp;
+                const unsigned temp = Pivots.GetRef(pivot_i);
+                Pivots.GetRef(pivot_i) = Pivots.GetRef(pivot_j);
+                Pivots.GetRef(pivot_j) = temp;
             }
 
-            RowInfo& rowInfo = Rows[matrixRowIndex_j];
-            rowInfo.UsedForSolution = true;
-            const unsigned pivotColumnCount = rowInfo.MatrixColumnCount;
+            RowInfo* rowPtr = Rows.GetPtr(matrixRowIndex_j);
+            rowPtr->UsedForSolution = true;
+            const unsigned pivotColumnCount = rowPtr->MatrixColumnCount;
 
             // Skip eliminating extra rows in the case that we just solved the matrix
             if (pivot_i >= columns - 1)
@@ -2273,13 +2320,13 @@ UsePivoting:
             // For each remaining row:
             for (unsigned pivot_k = pivot_i + 1; pivot_k < rows; ++pivot_k)
             {
-                const unsigned matrixRowIndex_k = Pivots[pivot_k];
+                const unsigned matrixRowIndex_k = Pivots.GetRef(pivot_k);
                 uint8_t* rem_row = Matrix.Data + stride * matrixRowIndex_k;
                 if (EliminateRow(ge_row, rem_row, pivot_i, pivotColumnCount, val_i))
                 {
                     // Grow the column count of this row if we just filled it in on the right
-                    if (Rows[matrixRowIndex_k].MatrixColumnCount < pivotColumnCount)
-                        Rows[matrixRowIndex_k].MatrixColumnCount = pivotColumnCount;
+                    if (Rows.GetRef(matrixRowIndex_k).MatrixColumnCount < pivotColumnCount)
+                        Rows.GetRef(matrixRowIndex_k).MatrixColumnCount = pivotColumnCount;
                 }
             }
 
@@ -2442,6 +2489,28 @@ void RecoveryPacketList::DecrementElementCounters(const unsigned elementCount)
         Logger.Warning("Just clipped off the last recovery packet data from RecoveryPacketList");
         LastRecovery = RemovalPoint();
     }
+}
+
+void RecoveryPacketList::Delete(RecoveryPacket* recovery)
+{
+    SIAMESE_DEBUG_ASSERT(recovery);
+    RecoveryPacket* prev = recovery->Prev;
+    RecoveryPacket* next = recovery->Next;
+
+    if (prev)
+        prev->Next = next;
+    else
+        Head = next;
+
+    if (next)
+        next->Prev = prev;
+    else
+        Tail = prev;
+
+    --RecoveryPacketCount;
+
+    recovery->Buffer.Free(TheAllocator);
+    TheAllocator->Destruct(recovery);
 }
 
 

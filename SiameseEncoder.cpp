@@ -92,7 +92,7 @@ SiameseResult EncoderPacketWindow::Add(SiameseOriginalPacket& packet)
     }
 
     const unsigned column         = NextColumn;
-    const unsigned subwindowCount = (unsigned)Subwindows.size();
+    const unsigned subwindowCount = Subwindows.GetSize();
     unsigned element              = Count;
 
     // Assign packet number
@@ -103,9 +103,8 @@ SiameseResult EncoderPacketWindow::Add(SiameseOriginalPacket& packet)
     // snapshots as a subwindow is filled and we need to store its snapshot
     if (element + kColumnLaneCount >= subwindowCount * kSubwindowSize)
     {
-        Subwindows.resize(subwindowCount + 1);
-        Subwindows[subwindowCount] = TheAllocator->Construct<EncoderSubwindow>();
-        if (!Subwindows[subwindowCount])
+        EncoderSubwindow* subwindow = TheAllocator->Construct<EncoderSubwindow>();
+        if (!subwindow || !Subwindows.Append(subwindow))
         {
             EmergencyDisabled = true;
             Logger.Error("WindowAdd.Construct OOM");
@@ -231,6 +230,7 @@ void EncoderPacketWindow::RemoveElements()
     const unsigned firstKeptSubwindow  = FirstUnremovedElement / kSubwindowSize;
     const unsigned removedElementCount = firstKeptSubwindow * kSubwindowSize;
     SIAMESE_DEBUG_ASSERT(firstKeptSubwindow >= 1);
+    SIAMESE_DEBUG_ASSERT(firstKeptSubwindow < Subwindows.GetSize());
     SIAMESE_DEBUG_ASSERT(removedElementCount % kColumnLaneCount == 0);
     SIAMESE_DEBUG_ASSERT(removedElementCount <= FirstUnremovedElement);
 
@@ -265,9 +265,43 @@ void EncoderPacketWindow::RemoveElements()
             SumStartElement = 0;
     }
 
-    // Shift kept subwindows to the front of the vector
-    // Note: Removed entries get rotated to the end
-    std::rotate(Subwindows.begin(), Subwindows.begin() + firstKeptSubwindow, Subwindows.end());
+    // Shift kept subwindows to the front of the vector:
+
+    // Resize a temporary buffer for removed subwindows
+    if (!SubwindowsShift.SetSize_NoCopy(firstKeptSubwindow))
+    {
+        SIAMESE_DEBUG_BREAK(); // OOM
+        EmergencyDisabled = true;
+        return;
+    }
+
+    // Store removed subwindows temporarily
+#if 0
+    for (unsigned i = 0; i < firstKeptSubwindow; ++i)
+        SubwindowsShift.GetRef(i) = Subwindows.GetRef(i);
+#else
+    memcpy(
+        SubwindowsShift.GetPtr(0),
+        Subwindows.GetPtr(0),
+        firstKeptSubwindow * sizeof(EncoderSubwindow*)
+    );
+#endif
+
+    const unsigned subwindowsShifted = Subwindows.GetSize() - firstKeptSubwindow;
+
+    // Shift subwindows to front that are being kept
+    memmove(
+        Subwindows.GetPtr(0),
+        Subwindows.GetPtr(firstKeptSubwindow),
+        subwindowsShifted * sizeof(EncoderSubwindow*)
+    );
+
+    // Removed subwindows are moved to the end (unordered) for later reuse
+    memcpy(
+        Subwindows.GetPtr(subwindowsShifted),
+        SubwindowsShift.GetPtr(0),
+        firstKeptSubwindow * sizeof(EncoderSubwindow*)
+    );
 
     // Update the count of elements in the window
     SIAMESE_DEBUG_ASSERT(Count >= removedElementCount);
@@ -275,7 +309,7 @@ void EncoderPacketWindow::RemoveElements()
 
     // Roll up the ColumnStart member
     ColumnStart = ElementToColumn(removedElementCount);
-    SIAMESE_DEBUG_ASSERT(ColumnStart == Subwindows[0]->Originals[0].Column);
+    SIAMESE_DEBUG_ASSERT(ColumnStart == Subwindows.GetRef(0)->Originals[0].Column);
 
     // Roll up the FirstUnremovedElement member
     SIAMESE_DEBUG_ASSERT(FirstUnremovedElement % kSubwindowSize == FirstUnremovedElement - removedElementCount);
