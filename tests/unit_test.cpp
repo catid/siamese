@@ -45,10 +45,10 @@ using namespace std;
 //#define TEST_BLOCK
 
 // Test: Encoding data with packetloss
-#define TEST_STREAMING
+//#define TEST_STREAMING
 
 // Test: This is a simulated channel with delay and uniform packetloss + ARQ + FEC for transport
-//#define TEST_HARQ_STREAM
+#define TEST_HARQ_STREAM
 
 // This experiment uses FEC instead of retransmission to see how it performs
 //#define HARQ_RETRANSMIT_WITH_FEC

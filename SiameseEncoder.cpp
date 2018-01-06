@@ -276,16 +276,11 @@ void EncoderPacketWindow::RemoveElements()
     }
 
     // Store removed subwindows temporarily
-#if 0
-    for (unsigned i = 0; i < firstKeptSubwindow; ++i)
-        SubwindowsShift.GetRef(i) = Subwindows.GetRef(i);
-#else
     memcpy(
         SubwindowsShift.GetPtr(0),
         Subwindows.GetPtr(0),
         firstKeptSubwindow * sizeof(EncoderSubwindow*)
     );
-#endif
 
     const unsigned subwindowsShifted = Subwindows.GetSize() - firstKeptSubwindow;
 
