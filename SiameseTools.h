@@ -226,13 +226,13 @@ public:
     }
 
     /// Return a reference to an element
-    SIAMESE_FORCE_INLINE T& GetRef(int index)
+    SIAMESE_FORCE_INLINE T& GetRef(int index) const
     {
         return DataPtr[index];
     }
 
     /// Return a pointer to an element
-    SIAMESE_FORCE_INLINE T* GetPtr(int index)
+    SIAMESE_FORCE_INLINE T* GetPtr(int index) const
     {
         return DataPtr + index;
     }
