@@ -479,6 +479,11 @@ ExitSum:
     lifting already, and a larger RTO should be used.  And even in case (2) it
     can play a large role in reducing delay.
 
+    With careful estimation on the receiver side, a NACK can be sent sooner for
+    reordered data to cut the overall retransmission time to RTT * 1.5 at best.
+    This would require a lot more complexity at the receiver and it would also
+    provide no practical benefit over recovering with FEC.
+
     For high-speed flows, FEC recovery is not desireable because there is no
     delay requirement on the data.  So instead a long RTO can be selected to
     safely avoid retransmitting data unnecessarily, optimizing for bandwidth.
