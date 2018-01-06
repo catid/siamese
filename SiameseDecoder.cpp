@@ -293,7 +293,6 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
     {
         Logger.Info("Got recovery packet: ColumnStart=", metadata.ColumnStart, " SumCount=", metadata.SumCount, " LDPC_Count=", metadata.LDPCCount, " Row=", metadata.Row);
 
-        SIAMESE_DEBUG_ASSERT(metadata.ColumnStart + metadata.SumCount >= Window.ColumnStart);
         elementEnd = Window.ColumnToElement(metadata.ColumnStart + metadata.SumCount);
 
         // Ignore data from too long ago
