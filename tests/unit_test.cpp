@@ -712,10 +712,10 @@ class HARQSimulation
     static const unsigned kLastPacket = 20000; // Something longer than Siamese max 16K packets to make sure that is tested
 
     // Channel character
-    static const unsigned kLossPercent = 10;
+    static const unsigned kLossPercent = 3;
 
     // FEC parameters
-    static const unsigned kRedundancyPercent = 20;
+    static const unsigned kRedundancyPercent = 6;
 
     // Bandwidth
     static const unsigned kPacketsPerInterval = 4;

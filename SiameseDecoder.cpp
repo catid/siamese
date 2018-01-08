@@ -1126,11 +1126,11 @@ SiameseResult Decoder::BackSubstitution()
 
 SiameseResult Decoder::GetStatistics(uint64_t* statsOut, unsigned statsCount)
 {
-    if (statsCount > SiameseEncoderStats_Count)
-        statsCount = SiameseEncoderStats_Count;
+    if (statsCount > SiameseDecoderStats_Count)
+        statsCount = SiameseDecoderStats_Count;
 
     // Fill in memory allocated
-    Stats.Counts[SiameseEncoderStats_MemoryUsed] = TheAllocator.GetMemoryAllocatedBytes();
+    Stats.Counts[SiameseDecoderStats_MemoryUsed] = TheAllocator.GetMemoryAllocatedBytes();
 
     for (unsigned i = 0; i < statsCount; ++i)
         statsOut[i] = Stats.Counts[i];
