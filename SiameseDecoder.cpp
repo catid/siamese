@@ -626,6 +626,10 @@ SiameseResult Decoder::Decode(SiameseOriginalPacket** packetsPtrOut, unsigned* c
     {
         if (recoveryCount >= lostCount)
         {
+            // If maximum loss recovery count is exceeded:
+            if (lostCount > kMaximumLossRecoveryCount)
+                return Siamese_NeedMoreData;
+
             SiameseResult result = DecodeCheckedRegion();
 
             // Pass error or success up; continue on decode failure
@@ -2176,7 +2180,7 @@ bool RecoveryMatrixState::GenerateMatrix()
     }
 
 #ifdef SIAMESE_DEBUG
-    // Check: Verify zeroes after matrix rows
+    // Check: Verify zeros after matrix rows
     for (unsigned i = 0; i < rows; ++i)
     {
         unsigned j;

@@ -76,6 +76,9 @@ namespace siamese {
 //------------------------------------------------------------------------------
 // Code Parameters
 
+/// Maximum recovery loss count to avoid causing huge delays
+static const unsigned kMaximumLossRecoveryCount = 256;
+
 /// Number of values 3..255 that we cycle through
 static const unsigned kColumnValuePeriod = 253;
 
@@ -226,7 +229,7 @@ struct GrowingAlignedDataBuffer
 
 
     /// Growing mantaining existing data in the buffer
-    /// Newly grown buffer space will be initialized to zeroes
+    /// Newly grown buffer space will be initialized to zeros
     bool GrowZeroPadded(pktalloc::Allocator* allocator, unsigned bytes)
     {
         SIAMESE_DEBUG_ASSERT(allocator && bytes > 0);
@@ -246,7 +249,7 @@ struct GrowingAlignedDataBuffer
     }
 
     /// Growing *dropping* existing data in the buffer
-    /// Newly grown buffer space will *not* be initialized to zeroes
+    /// Newly grown buffer space will *not* be initialized to zeros
     bool Initialize(pktalloc::Allocator* allocator, unsigned bytes)
     {
         SIAMESE_DEBUG_ASSERT(allocator && bytes > 0);

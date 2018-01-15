@@ -36,8 +36,6 @@ using namespace std;
 #include "../SiameseTools.h"
 #include "../SiameseSerializers.h"
 
-#define ENABLE_UNIT_TEST
-
 #define TEST_VARIABLE_SIZED_DATA
 #define TEST_ENABLE_DECODER
 
@@ -1487,7 +1485,215 @@ void HARQSimulation::Run(unsigned seed)
 #endif // TEST_HARQ_STREAM
 
 
-#ifdef ENABLE_UNIT_TEST
+bool TestLargeBurstLoss()
+{
+    Logger.Info("Test: TestLargeBurstLoss");
+
+    static const int N = 1000;
+    static const int K = 255;
+
+    for (unsigned num = 0; num < 1000; ++num)
+    for (int lossCount = N / 10 - 3; lossCount < K && lossCount <= N; ++lossCount)
+    {
+        siamese::PCGRandom prng;
+        prng.Seed(kSeed, lossCount * 1000 + num);
+
+        FunctionTimer t_siamese_encoder_create("siamese_encoder_create");
+        FunctionTimer t_siamese_decoder_create("siamese_decoder_create");
+        FunctionTimer t_siamese_encoder_add("siamese_encoder_add");
+        FunctionTimer t_siamese_decoder_add_original("siamese_decoder_add_original");
+        FunctionTimer t_siamese_encode("siamese_encode");
+        FunctionTimer t_siamese_decoder_add_recovery("siamese_decoder_add_recovery");
+        FunctionTimer t_siamese_decoder_is_ready("siamese_decoder_is_ready");
+        FunctionTimer t_siamese_decode("siamese_decode");
+
+        static const unsigned kTrials = 100;
+
+        for (unsigned trial = 0; trial < kTrials; ++trial)
+        {
+            t_siamese_encoder_create.BeginCall();
+            SiameseEncoder encoder = siamese_encoder_create();
+            t_siamese_encoder_create.EndCall();
+
+            if (!encoder)
+            {
+                Logger.Error("Unable to create encoder");
+                SIAMESE_DEBUG_BREAK();
+                return;
+            }
+
+            t_siamese_decoder_create.BeginCall();
+            SiameseDecoder decoder = siamese_decoder_create();
+            t_siamese_decoder_create.EndCall();
+
+            if (!decoder)
+            {
+                Logger.Error("Unable to create decoder");
+                SIAMESE_DEBUG_BREAK();
+                return;
+            }
+
+            unsigned decoderReceiveCount = 0;
+
+            for (int i = 0; i < N; ++i)
+            {
+                uint8_t buffer[2000];
+#ifdef TEST_VARIABLE_SIZED_DATA
+                unsigned bytes = 2 + (prng.Next() % (1200 - 2));
+#else
+                unsigned bytes = 1200;
+#endif
+                SIAMESE_DEBUG_ASSERT(bytes <= sizeof(buffer));
+                WriteRandomSelfCheckingPacket(prng, buffer, bytes);
+
+                SiameseOriginalPacket original;
+                original.Data = buffer;
+                original.DataBytes = bytes;
+                {
+                    t_siamese_encoder_add.BeginCall();
+                    int result = siamese_encoder_add(encoder, &original);
+                    t_siamese_encoder_add.EndCall();
+                    if (result)
+                    {
+                        Logger.Error("Unable to add original data to encoder");
+                        SIAMESE_DEBUG_BREAK();
+                        return;
+                    }
+                }
+
+#ifdef TEST_ENABLE_DECODER
+                // Lose first few packets
+                if (i >= lossCount)
+                {
+                    t_siamese_decoder_add_original.BeginCall();
+                    int result = siamese_decoder_add_original(decoder, &original);
+                    t_siamese_decoder_add_original.EndCall();
+                    if (result)
+                    {
+                        Logger.Error("Unable to add original data to decoder");
+                        SIAMESE_DEBUG_BREAK();
+                        return;
+                    }
+                    ++decoderReceiveCount;
+                }
+#endif // TEST_ENABLE_DECODER
+            }
+
+#ifdef TEST_ENABLE_DECODER
+            for (int i = 0; i < K; ++i)
+#else
+            for (int i = 0; i < lossCount; ++i)
+#endif
+            {
+                SiameseRecoveryPacket recovery;
+
+                {
+                    t_siamese_encode.BeginCall();
+                    int result = siamese_encode(encoder, &recovery);
+                    t_siamese_encode.EndCall();
+                    if (result)
+                    {
+                        SIAMESE_DEBUG_BREAK();
+                        Logger.Error("Unable to generate encoded data");
+                        return;
+                    }
+                }
+
+#ifdef TEST_ENABLE_DECODER
+                {
+                    t_siamese_decoder_add_recovery.BeginCall();
+                    int result = siamese_decoder_add_recovery(decoder, &recovery);
+                    t_siamese_decoder_add_recovery.EndCall();
+                    if (result)
+                    {
+                        Logger.Error("Unable to add recovery data to decoder");
+                        SIAMESE_DEBUG_BREAK();
+                        return;
+                    }
+                }
+
+                for (;;)
+                {
+                    t_siamese_decoder_is_ready.BeginCall();
+                    int readyResult = siamese_decoder_is_ready(decoder);
+                    t_siamese_decoder_is_ready.EndCall();
+
+                    if (readyResult)
+                    {
+                        SIAMESE_DEBUG_ASSERT(readyResult == Siamese_NeedMoreData);
+                        break;
+                    }
+
+                    SiameseOriginalPacket* packets = nullptr;
+                    unsigned packetCount = 0;
+
+                    t_siamese_decode.BeginCall();
+                    int decodeResult = siamese_decode(decoder, &packets, &packetCount);
+                    t_siamese_decode.EndCall();
+
+                    if (decodeResult == Siamese_Success)
+                    {
+                        //cout << "Successful decode: ";
+                        for (unsigned i = 0; i < packetCount; ++i)
+                        {
+                            //cout << packets[i].PacketNum << " ";
+
+                            if (!CheckPacket(packets[i].Data, packets[i].DataBytes))
+                            {
+                                Logger.Error("Packet check failed for ", i, ".DataBytes = ", packets[i].DataBytes);
+                                SIAMESE_DEBUG_BREAK();
+                                return;
+                            }
+
+                            ++decoderReceiveCount;
+                        }
+                        //cout);
+
+                        if (decoderReceiveCount >= N)
+                        {
+                            goto DoneDecoding;
+                        }
+                    }
+                    else if (decodeResult == Siamese_NeedMoreData)
+                    {
+                        //cout << "Needed more data to decode");
+                    }
+                    else
+                    {
+                        Logger.Error("Decode returned ", decodeResult);
+                        SIAMESE_DEBUG_BREAK();
+                        return;
+                    }
+                }
+#endif // TEST_ENABLE_DECODER
+            }
+
+#ifdef TEST_ENABLE_DECODER
+DoneDecoding:
+#endif // TEST_ENABLE_DECODER
+
+            siamese_encoder_free(encoder);
+            siamese_decoder_free(decoder);
+        }
+
+        // Flush the log so we do not miss the last part
+        logger::OutputWorker::GetInstance().Flush();
+
+        Logger.Info("Using ", lossCount, " recovery packets for ", N, " original packets:");
+
+        t_siamese_encoder_create.Print(kTrials);
+        t_siamese_encoder_add.Print(kTrials);
+        t_siamese_encode.Print(kTrials);
+#ifdef TEST_ENABLE_DECODER
+        t_siamese_decoder_create.Print(kTrials);
+        t_siamese_decoder_add_original.Print(kTrials);
+        t_siamese_decoder_add_recovery.Print(kTrials);
+        t_siamese_decoder_is_ready.Print(kTrials);
+        t_siamese_decode.Print(kTrials);
+#endif
+    }
+}
+
 
 int main()
 {
@@ -1503,6 +1709,12 @@ int main()
 
     t_siamese_init.Print(1);
 
+    if (!TestLargeBurstLoss())
+    {
+        Logger.Error("Test failed: TestLargeBurstLoss");
+        SIAMESE_DEBUG_BREAK();
+        return -1;
+    }
 
 #ifdef TEST_HARQ_STREAM
     for (unsigned seed = 0;; ++seed)
@@ -1522,5 +1734,3 @@ int main()
 
     return 0;
 }
-
-#endif // ENABLE_UNIT_TEST

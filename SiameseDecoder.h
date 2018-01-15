@@ -65,7 +65,7 @@
     is fairly inexpensive.
 
     To speed up this step with the density of the matrix in mind, we attempt
-    GE without pivoting first and then switch to a pivoting algorithm as zeroes
+    GE without pivoting first and then switch to a pivoting algorithm as zeros
     are encountered.
 
     If this fails we attempt to build a larger recovery matrix involving more
@@ -476,7 +476,7 @@ struct RecoveryMatrixState
         bool UsedForSolution = false;
 
         /// Number of non-zero matrix columns
-        /// Note: This is useful because the matrix to solve often has zeroes
+        /// Note: This is useful because the matrix to solve often has zeros
         /// roughly above the diagonal.  As rows fill in during GE these counts
         /// must be updated to reflect their growth
         unsigned MatrixColumnCount = 0;

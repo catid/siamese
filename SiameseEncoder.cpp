@@ -1322,7 +1322,7 @@ SiameseResult Encoder::GenerateCauchyPacket(SiameseRecoveryPacket& packet)
         unsigned originalBytes   = original->Buffer.Bytes;
 
         memcpy(RecoveryPacket.Data, original->Buffer.Data, originalBytes);
-        // Pad the rest out with zeroes to avoid corruption
+        // Pad the rest out with zeros to avoid corruption
         SIAMESE_DEBUG_ASSERT(RecoveryPacket.Bytes >= originalBytes);
         memset(RecoveryPacket.Data + originalBytes, 0, recoveryBytes - originalBytes);
 
@@ -1357,7 +1357,7 @@ SiameseResult Encoder::GenerateCauchyPacket(SiameseRecoveryPacket& packet)
         unsigned originalBytes   = original->Buffer.Bytes;
 
         gf256_mul_mem(RecoveryPacket.Data, original->Buffer.Data, y, originalBytes);
-        // Pad the rest out with zeroes to avoid corruption
+        // Pad the rest out with zeros to avoid corruption
         SIAMESE_DEBUG_ASSERT(recoveryBytes >= originalBytes);
         SIAMESE_DEBUG_ASSERT(RecoveryPacket.Bytes >= originalBytes);
         memset(RecoveryPacket.Data + originalBytes, 0, recoveryBytes - originalBytes);
