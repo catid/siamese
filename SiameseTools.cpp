@@ -52,6 +52,7 @@ namespace siamese {
 // Timing
 
 #ifdef _WIN32
+// Precomputed frequency inverse
 static double PerfFrequencyInverseUsec = 0.;
 static double PerfFrequencyInverseMsec = 0.;
 
@@ -60,8 +61,9 @@ static void InitPerfFrequencyInverse()
     LARGE_INTEGER freq = {};
     if (!::QueryPerformanceFrequency(&freq) || freq.QuadPart == 0)
         return;
-    PerfFrequencyInverseUsec = 1000000. / (double)freq.QuadPart;
-    PerfFrequencyInverseMsec = 1000. / (double)freq.QuadPart;
+    const double invFreq = 1. / (double)freq.QuadPart;
+    PerfFrequencyInverseUsec = 1000000. * invFreq;
+    PerfFrequencyInverseMsec = 1000. * invFreq;
     SIAMESE_DEBUG_ASSERT(PerfFrequencyInverseUsec > 0.);
     SIAMESE_DEBUG_ASSERT(PerfFrequencyInverseMsec > 0.);
 }

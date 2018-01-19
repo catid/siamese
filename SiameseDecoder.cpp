@@ -1154,7 +1154,6 @@ SiameseResult Decoder::GetStatistics(uint64_t* statsOut, unsigned statsCount)
 bool DecoderPacketWindow::MarkGotColumn(unsigned column)
 {
     // Convert to window element
-    SIAMESE_DEBUG_ASSERT(column >= ColumnStart);
     const unsigned element = ColumnToElement(column);
     if (InvalidElement(element))
     {
@@ -2042,7 +2041,6 @@ bool RecoveryMatrixState::GenerateMatrix()
             for (unsigned j = startMatrixColumn; j < columns; ++j)
             {
                 const unsigned column  = Columns.GetRef(j).Column;
-                SIAMESE_DEBUG_ASSERT(column >= metadata.ColumnStart);
                 const unsigned element = SubtractColumns(column, metadata.ColumnStart);
 
                 // If we hit the end of the recovery packet data:
@@ -2083,7 +2081,6 @@ bool RecoveryMatrixState::GenerateMatrix()
         for (unsigned j = startMatrixColumn; j < columns; ++j)
         {
             const unsigned column  = Columns.GetRef(j).Column;
-            SIAMESE_DEBUG_ASSERT(column >= metadata.ColumnStart);
             const unsigned element = SubtractColumns(column, metadata.ColumnStart);
 
             // If we hit the end of the recovery packet data:
