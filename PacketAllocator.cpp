@@ -318,7 +318,6 @@ uint8_t* Allocator::Allocate(unsigned bytes)
 #endif // PKTALLOC_DEBUG
             regionHeader->Header    = windowHeader;
             regionHeader->UsedUnits = units;
-            regionHeader->Freed     = false;
 
             // Update window header
 #ifdef PKTALLOC_SHRINK
@@ -458,7 +457,6 @@ uint8_t* Allocator::allocateFromNewWindow(unsigned units)
 #endif // PKTALLOC_DEBUG
     regionHeader->Header    = windowHeader;
     regionHeader->UsedUnits = units;
-    regionHeader->Freed     = false;
 
     uint8_t* data = (uint8_t*)regionHeader + kUnitSize;
 #ifdef PKTALLOC_SCRUB_MEMORY
@@ -492,16 +490,16 @@ uint8_t* Allocator::Reallocate(uint8_t* ptr, unsigned bytes, Realloc behavior)
         return nullptr;
     }
 #endif // PKTALLOC_DEBUG
-    if (regionHeader->Freed)
+    if (regionHeader->IsFreed())
     {
         PKTALLOC_DEBUG_BREAK(); // Double-free
         return Allocate(bytes);
     }
 
     const unsigned existingUnits = regionHeader->UsedUnits;
-#ifndef PKTALLOC_DISABLE_ALLOCATOR
+#ifndef PKTALLOC_DISABLE
     PKTALLOC_DEBUG_ASSERT(!regionHeader->Header || existingUnits <= kFallbackThresholdUnits);
-#endif // PKTALLOC_DISABLE_ALLOCATOR
+#endif // PKTALLOC_DISABLE
 
     // If the existing allocation is big enough:
     const unsigned requestedUnits = (bytes + kUnitSize - 1) / kUnitSize + 1;
@@ -540,7 +538,7 @@ void Allocator::Shrink(uint8_t* ptr, unsigned bytes)
         return;
     }
 #endif // PKTALLOC_DEBUG
-    if (regionHeader->Freed)
+    if (regionHeader->IsFreed())
     {
         PKTALLOC_DEBUG_BREAK(); // Double-free
         return;
@@ -606,27 +604,28 @@ void Allocator::Free(uint8_t* ptr)
         return;
     }
 #endif // PKTALLOC_DEBUG
-    if (regionHeader->Freed)
+    if (regionHeader->IsFreed())
     {
         PKTALLOC_DEBUG_BREAK(); // Double-free
         return;
     }
-    regionHeader->Freed = true;
 
     WindowHeader* windowHeader = regionHeader->Header;
     if (!windowHeader)
     {
+        regionHeader->UsedUnits = 0; // Mark freed
         fallbackFree(ptr);
         return;
     }
 
     const unsigned units = regionHeader->UsedUnits;
     PKTALLOC_DEBUG_ASSERT(units >= 2 && units <= kFallbackThresholdUnits);
+    regionHeader->UsedUnits = 0; // Mark freed
 
     PKTALLOC_DEBUG_ASSERT((uint8_t*)regionHeader >= (uint8_t*)regionHeader->Header + kWindowHeaderBytes);
     unsigned regionStart = regionHeader->GetUnitStart();
     PKTALLOC_DEBUG_ASSERT(regionStart < kWindowMaxUnits);
-    PKTALLOC_DEBUG_ASSERT(regionStart + regionHeader->UsedUnits <= kWindowMaxUnits);
+    PKTALLOC_DEBUG_ASSERT(regionStart + units <= kWindowMaxUnits);
 
     unsigned regionEnd = regionStart + units;
 
@@ -741,7 +740,6 @@ uint8_t* Allocator::fallbackAllocate(unsigned bytes)
 #ifdef PKTALLOC_DEBUG
     regionHeader->Canary    = AllocationHeader::kCanaryExpected;
 #endif // PKTALLOC_DEBUG
-    regionHeader->Freed     = false;
     regionHeader->Header    = nullptr;
     regionHeader->UsedUnits = units;
 

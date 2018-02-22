@@ -58,9 +58,7 @@
     #include <intrin.h> // __popcnt64
 #endif
 
-
 namespace pktalloc {
-
 
 
 //------------------------------------------------------------------------------
@@ -159,7 +157,7 @@ PKTALLOC_FORCE_INLINE unsigned PopCount64(uint64_t x)
 
 /// Returns lowest bit index 0..63 where the first non-zero bit is found
 /// Precondition: x != 0
-PKTALLOC_FORCE_INLINE unsigned FirstNonzeroBit64(uint64_t x)
+PKTALLOC_FORCE_INLINE unsigned TrailingZeros64(uint64_t x)
 {
 #ifdef _MSC_VER
 #ifdef _WIN64
@@ -287,7 +285,7 @@ struct CustomBitSet
         {
             unsigned offset = 0;
             if ((word & 1) == 0)
-                offset = FirstNonzeroBit64(word);
+                offset = TrailingZeros64(word);
             return bitStart + offset;
         }
 
@@ -295,7 +293,7 @@ struct CustomBitSet
         {
             word = ~Words[i];
             if (word != 0)
-                return i * kWordBits + FirstNonzeroBit64(word);
+                return i * kWordBits + TrailingZeros64(word);
         }
 
         return kValidBits;
@@ -319,7 +317,7 @@ struct CustomBitSet
         {
             unsigned offset = 0;
             if ((word & 1) == 0)
-                offset = FirstNonzeroBit64(word);
+                offset = TrailingZeros64(word);
             return bitStart + offset;
         }
 
@@ -329,7 +327,7 @@ struct CustomBitSet
         {
             word = Words[i];
             if (word != 0)
-                return i * kWordBits + FirstNonzeroBit64(word);
+                return i * kWordBits + TrailingZeros64(word);
         }
 
         return bitEnd;
@@ -478,11 +476,11 @@ protected:
     typedef CustomBitSet<kWindowMaxUnits> UsedMaskT;
 
     /// When we can only fit a few in a window, switch to fallback
-#ifdef PKTALLOC_DISABLE_ALLOCATOR
+#ifdef PKTALLOC_DISABLE
     static const unsigned kFallbackThresholdUnits = 0;
-#else
+#else // PKTALLOC_DISABLE
     static const unsigned kFallbackThresholdUnits = kWindowMaxUnits / 4;
-#endif
+#endif // PKTALLOC_DISABLE
 
     /// This is at the front of each allocation window
     struct WindowHeader
@@ -510,24 +508,26 @@ protected:
     /// and Free() are faster.
     struct AllocationHeader
     {
+        /// Header for this window
+        /// Note: This will be set to nullptr for fallback allocations
+        WindowHeader* Header;
+
 #ifdef PKTALLOC_DEBUG
         static const uint32_t kCanaryExpected = 0xaabbccdd;
         uint32_t Canary;
 #endif // PKTALLOC_DEBUG
 
-        /// Is this allocation already freed? (some minimal self-diagnostics)
-        uint32_t Freed;
-
         /// Number of units used right now
+        /// 0 = Freed (some minimal self-diagnostics)
         uint32_t UsedUnits;
 
-        /// Header for this window
-        /// Note: This will be set to nullptr for fallback allocations
-        WindowHeader* Header;
+        /// Wrappers for UsedUnits == 0
+        PKTALLOC_FORCE_INLINE bool IsFreed() const {
+            return UsedUnits == 0;
+        }
 
         /// Calculate which unit this allocation starts at in the window
-        unsigned GetUnitStart()
-        {
+        PKTALLOC_FORCE_INLINE unsigned GetUnitStart() const {
             return (unsigned)((uint8_t*)this - ((uint8_t*)Header + kWindowHeaderBytes)) / kUnitSize;
         }
     };

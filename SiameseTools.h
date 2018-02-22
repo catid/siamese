@@ -234,7 +234,7 @@ public:
     }
 
     /// Return a pointer to an element
-    SIAMESE_FORCE_INLINE T* GetPtr(int index) const
+    SIAMESE_FORCE_INLINE T* GetPtr(int index = 0) const
     {
         return DataPtr + index;
     }

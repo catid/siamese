@@ -87,10 +87,12 @@ OutputWorker& OutputWorker::GetInstance()
     return *instance.get();
 }
 
+#if !defined(LOGGER_DISABLE_ATEXIT)
 static void AtExitWrapper()
 {
     OutputWorker::GetInstance().Stop();
 }
+#endif // LOGGER_DISABLE_ATEXIT
 
 OutputWorker::OutputWorker()
 {
@@ -151,7 +153,7 @@ void OutputWorker::Stop()
 
         // Make sure that queue notification happens after termination flag is set
         {
-            std::unique_lock<std::mutex> locker(QueueLock);
+            std::unique_lock<std::mutex> qlocker(QueueLock);
             QueueCondition.notify_all();
         }
 
@@ -168,7 +170,7 @@ void OutputWorker::Stop()
 
     // Make sure that concurrent Flush() calls do not block
     {
-        std::unique_lock<std::mutex> locker(QueueLock);
+        std::unique_lock<std::mutex> qlocker(QueueLock);
         FlushCondition.notify_all();
     }
 }
@@ -259,7 +261,9 @@ void OutputWorker::Loop()
             FlushCondition.notify_all();
     }
 
-    QueuedMessage qm(Level::Info, "Logger", std::string("Terminating"));
+    // Log out that logger is terminating
+    std::string terminatingMessage = "Terminating";
+    QueuedMessage qm(Level::Info, "Logger", terminatingMessage);
     Log(qm);
 }
 

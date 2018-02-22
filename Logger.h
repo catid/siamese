@@ -139,7 +139,7 @@ namespace logger {
 
 /// Tune the number of work queue items before we drop log messages on the floor.
 /// If LOGGER_NEVER_DROP is defined this is when we block and flush.
-static const size_t kWorkQueueLimit = 4096;
+static const size_t kWorkQueueLimit = 1024;
 
 
 //------------------------------------------------------------------------------

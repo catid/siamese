@@ -44,7 +44,10 @@
     + NACK Loss Range (1-7 bytes)
 */
 
+#include "siamese.h"
+#include "SiameseTools.h"
 #include "SiameseCommon.h"
+#include "gf256.h"
 
 namespace siamese {
 
