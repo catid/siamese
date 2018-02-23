@@ -198,10 +198,15 @@ bool Allocator::IntegrityCheck() const
     PKTALLOC_DEBUG_ASSERT(ii == PreferredWindowsCount);
 
     ii = 0;
-    for (WindowHeader* windowHeader = FullWindowsHead, *prev = nullptr; windowHeader; windowHeader = windowHeader->Next, ++ii)
+#ifdef PKTALLOC_DEBUG
+    WindowHeader* windowHeaderPrev = nullptr;
+#endif // PKTALLOC_DEBUG
+    for (WindowHeader* windowHeader = FullWindowsHead; windowHeader; windowHeader = windowHeader->Next, ++ii)
     {
-        PKTALLOC_DEBUG_ASSERT(windowHeader->Prev == prev);
-        prev = windowHeader;
+#ifdef PKTALLOC_DEBUG
+        PKTALLOC_DEBUG_ASSERT(windowHeader->Prev == windowHeaderPrev);
+        windowHeaderPrev = windowHeader;
+#endif // PKTALLOC_DEBUG
 
         if (ii >= FullWindowsCount)
         {
@@ -280,9 +285,16 @@ uint8_t* Allocator::Allocate(unsigned bytes)
     if (units > kFallbackThresholdUnits)
         return fallbackAllocate(bytes);
 
-    for (WindowHeader* windowHeader = PreferredWindowsHead, *prev = nullptr; windowHeader; prev = windowHeader, windowHeader = windowHeader->Next)
+#ifdef PKTALLOC_DEBUG
+    WindowHeader* windowHeaderPrev = nullptr;
+#endif // PKTALLOC_DEBUG
+    for (WindowHeader* windowHeader = PreferredWindowsHead; windowHeader; windowHeader = windowHeader->Next)
     {
         PKTALLOC_DEBUG_ASSERT(!windowHeader->InFullList);
+#ifdef PKTALLOC_DEBUG
+        PKTALLOC_DEBUG_ASSERT(windowHeader->Prev == windowHeaderPrev);
+        windowHeaderPrev = windowHeader;
+#endif // PKTALLOC_DEBUG
 
         if (windowHeader->FreeUnitCount < units)
             continue;
