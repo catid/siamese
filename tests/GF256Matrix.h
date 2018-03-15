@@ -61,9 +61,9 @@ public:
     void Print(int count = 0x7fffffff);
 
 protected:
-    int _rows, _cols;
-    uint8_t* _matrix;
-    int* _pivot;
+    int _rows = 0, _cols = 0;
+    uint8_t* _matrix = nullptr;
+    int* _pivot = nullptr;
 
     void cleanup();
 };

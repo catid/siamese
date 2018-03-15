@@ -1205,8 +1205,18 @@ static bool GenerateTestMatrix_Siamese_MoreCX(GF256Matrix& matrix, int row_start
         {
             for (int col = col_start; col <= col_end; ++col)
             {
-                uint8_t* val = matrix.Get(row - row_start, col - col_start);
-                *val = siamese::CauchyElement(row - row_start, col - col_start);
+                unsigned matrixRow = row - row_start;
+                unsigned matrixCol = col - col_start;
+
+                uint8_t* val = matrix.Get(matrixRow, matrixCol);
+                if (matrixRow >= siamese::kCauchyMaxRows || matrixCol >= siamese::kCauchyMaxColumns)
+                {
+                    *val = 0;
+                }
+                else
+                {
+                    *val = siamese::CauchyElement(matrixRow, matrixCol);
+                }
             }
         }
 
