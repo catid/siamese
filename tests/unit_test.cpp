@@ -39,7 +39,7 @@ using namespace std;
 #define TEST_VARIABLE_SIZED_DATA
 
 // Test: Verify the kMaximumLossRecoveryCount logic works properly
-#define TEST_LARGE_BURST_LOSS
+//#define TEST_LARGE_BURST_LOSS
 
 // Test: This is a simulated channel with delay and uniform packetloss + ARQ + FEC for transport
 #define TEST_HARQ_STREAM
