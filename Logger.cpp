@@ -222,7 +222,7 @@ void OutputWorker::Loop()
 {
     while (!Terminated)
     {
-        int overrun;
+        int overrun = 0;
         bool flushRequested = false;
         {
             // unique_lock used since QueueCondition.wait requires it
