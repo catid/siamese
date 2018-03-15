@@ -493,8 +493,7 @@ bool EncoderAcknowledgementState::OnAcknowledgementData(const uint8_t* data, uns
 {
     unsigned nextColumnExpected = 0;
     int headerBytes = DeserializeHeader_PacketNum(data, bytes, nextColumnExpected);
-    if (headerBytes < 1)
-    {
+    if (headerBytes < 1) {
         SIAMESE_DEBUG_BREAK(); // Invalid input
         return false;
     }
@@ -502,8 +501,7 @@ bool EncoderAcknowledgementState::OnAcknowledgementData(const uint8_t* data, uns
 
     // If we received ack data out of order:
     unsigned columnDelta = SubtractColumns(nextColumnExpected, NextColumnExpected);
-    if (IsColumnDeltaNegative(columnDelta))
-    {
+    if (IsColumnDeltaNegative(columnDelta)) {
         // Ignore any older data since it would lose information.
         return true;
     }
@@ -546,8 +544,9 @@ bool EncoderAcknowledgementState::OnAcknowledgementData(const uint8_t* data, uns
         memset(Data + bytes, 0, kPaddingBytes); // Zero guard bytes
 
         // Returns false if decoding the first loss range fails
-        if (!DecodeNextRange())
+        if (!DecodeNextRange()) {
             return false;
+        }
         SIAMESE_DEBUG_ASSERT(IsIteratorAtFront()); // Invalid data
     }
 
@@ -566,8 +565,9 @@ void EncoderAcknowledgementState::UpdateRTO()
 
     // If there is no unacknowledged data:
     unsigned firstLoss = TheWindow->ColumnToElement(NextColumnExpected);
-    if (firstLoss >= windowCount)
+    if (firstLoss >= windowCount) {
         return;
+    }
 
     // Get current time
     const uint64_t nowMsec64 = GetTimeMsec();
@@ -612,7 +612,9 @@ void EncoderAcknowledgementState::UpdateRTO()
         unsigned relativeStart, lossCountM1;
         const int lossRangeBytes = DeserializeHeader_NACKLossRange(
             data, remaining + kPaddingBytes, relativeStart, lossCountM1);
-        if (lossRangeBytes < 0 || lossRangeBytes > (int)remaining)
+
+        if (lossRangeBytes < 0 ||
+            lossRangeBytes > (int)remaining)
         {
             SIAMESE_DEBUG_BREAK(); // Invalid input
             return;
@@ -620,8 +622,9 @@ void EncoderAcknowledgementState::UpdateRTO()
         data += lossRangeBytes, remaining -= lossRangeBytes;
 
         // If element has not rolled up to the first acknowledged packet:
-        if (element + 1 < firstLoss)
+        if (element + 1 < firstLoss) {
             element = firstLoss - 1; // Roll it up
+        }
 
         // Calculat the first loss in this NACK range
         firstLoss += relativeStart;
@@ -631,8 +634,7 @@ void EncoderAcknowledgementState::UpdateRTO()
         // For each element up to the first loss:
         for (; element < firstLoss; ++element)
         {
-            if (element >= windowCount)
-            {
+            if (element >= windowCount) {
                 SIAMESE_DEBUG_BREAK(); // Invalid input
                 return;
             }
@@ -663,17 +665,21 @@ void EncoderAcknowledgementState::UpdateRTO()
     NextRTOColumn = TheWindow->ElementToColumn(element);
 
     // If there was no delay measurement:
-    if (longestAckDelayMsec <= 0)
+    if (longestAckDelayMsec <= 0) {
         return;
+    }
 
     // Recalculate the window size based on current timeout
     static const uint64_t kMaxWindowMsec = 4000;
     static const uint64_t kMinWindowMsec = 100;
     uint64_t windowMsec = RetransmitTimeoutMsec * 2;
-    if (windowMsec < kMinWindowMsec)
+
+    if (windowMsec < kMinWindowMsec) {
         windowMsec = kMinWindowMsec;
-    else if (windowMsec > kMaxWindowMsec)
+    }
+    else if (windowMsec > kMaxWindowMsec) {
         windowMsec = kMaxWindowMsec;
+    }
 
     // Update estimate of maximum RTT
     MaxWindowedRTT.Update(
@@ -687,8 +693,9 @@ void EncoderAcknowledgementState::UpdateRTO()
 
     // Do not allow the RTO to get so small that OS scheduling delays might cause timeouts.
     static const unsigned kMinimumRTOMsec = 20;
-    if (RetransmitTimeoutMsec < kMinimumRTOMsec)
+    if (RetransmitTimeoutMsec < kMinimumRTOMsec) {
         RetransmitTimeoutMsec = kMinimumRTOMsec;
+    }
 
     Logger.Info("Calculated windowMsec = ", windowMsec, " and RTT_max = ", RTT_max, " and RetransmitTimeoutMsec = ", RetransmitTimeoutMsec, " from longestAckDelayMsec = ", longestAckDelayMsec, " NextRTOColumn=", NextRTOColumn);
 }
@@ -696,8 +703,9 @@ void EncoderAcknowledgementState::UpdateRTO()
 bool EncoderAcknowledgementState::DecodeNextRange()
 {
     // If there is no more loss range data to process:
-    if (Offset >= DataBytes)
+    if (Offset >= DataBytes) {
         return false;
+    }
 
     // Decode loss range format:
 
@@ -706,12 +714,12 @@ bool EncoderAcknowledgementState::DecodeNextRange()
     unsigned relativeStart, lossCountM1;
     const int lossRangeBytes = DeserializeHeader_NACKLossRange(
         Data + Offset, DataBytes + kPaddingBytes - Offset, relativeStart, lossCountM1);
-    if (lossRangeBytes < 0)
+    if (lossRangeBytes < 0) {
         return false;
+    }
 
     Offset += lossRangeBytes;
-    if (Offset > DataBytes)
-    {
+    if (Offset > DataBytes) {
         SIAMESE_DEBUG_BREAK(); // Invalid input
         // TBD: Disable codec here?
         return false;
@@ -733,8 +741,9 @@ bool EncoderAcknowledgementState::GetNextLossColumn(unsigned& columnOut)
         // when we get to the end of the region.
         LossColumn = IncrementColumn1(LossColumn);
 
-        if (!DecodeNextRange())
+        if (!DecodeNextRange()) {
             return false;
+        }
     }
 
     columnOut = LossColumn;
@@ -785,11 +794,13 @@ SiameseResult Encoder::Acknowledge(
     unsigned bytes,
     unsigned& nextExpectedPacketNumOut)
 {
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
-    if (!Ack.OnAcknowledgementData(data, bytes))
+    if (!Ack.OnAcknowledgementData(data, bytes)) {
         return Siamese_InvalidInput;
+    }
 
     // Report the next expected packet number
     nextExpectedPacketNumOut = Ack.NextColumnExpected;
@@ -809,6 +820,7 @@ static unsigned LoadOriginal(OriginalPacket* original, SiameseOriginalPacket& or
     // Check: Deserialize length from the front
     unsigned lengthCheck;
     int headerBytesCheck = DeserializeHeader_PacketLength(original->Buffer.Data, original->Buffer.Bytes, lengthCheck);
+
     if (lengthCheck != length || (int)headerBytes != headerBytesCheck ||
         headerBytesCheck < 1 || lengthCheck == 0 ||
         lengthCheck + headerBytesCheck != original->Buffer.Bytes)
@@ -830,8 +842,7 @@ SiameseResult Encoder::AttemptRetransmit(
 {
     // Load original data and length
     const unsigned length = LoadOriginal(original, originalOut);
-    if (length == 0)
-    {
+    if (length == 0) {
         Window.EmergencyDisabled = true;
         return Siamese_Disabled;
     }
@@ -843,11 +854,12 @@ SiameseResult Encoder::AttemptRetransmit(
 
 SiameseResult Encoder::Retransmit(SiameseOriginalPacket& originalOut)
 {
-    originalOut.Data      = nullptr;
+    originalOut.Data = nullptr;
     originalOut.DataBytes = 0;
 
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     // If there is no unacknowledged data:
     if (Window.GetUnacknowledgedCount() <= 0)
@@ -858,7 +870,7 @@ SiameseResult Encoder::Retransmit(SiameseOriginalPacket& originalOut)
 
     // Get the window element first the first column expected by the receiver
     const unsigned firstElement = SubtractColumns(Ack.NextColumnExpected, Window.ColumnStart);
-    const unsigned count        = Window.Count;
+    const unsigned count = Window.Count;
 
     // If the peer's next expected column is outside the window:
     if (IsColumnDeltaNegative(firstElement) ||
@@ -890,8 +902,7 @@ SiameseResult Encoder::Retransmit(SiameseOriginalPacket& originalOut)
             SIAMESE_DEBUG_ASSERT(lastSendMsec != 0);
 
             // If RTO has not elapsed for the oldest entry:
-            if ((uint32_t)(nowMsec - lastSendMsec) < retransmitMsec)
-            {
+            if ((uint32_t)(nowMsec - lastSendMsec) < retransmitMsec) {
                 // Keep FoundOldest true for next time and stop for now
                 return Siamese_NeedMoreData;
             }
@@ -942,8 +953,9 @@ SiameseResult Encoder::Retransmit(SiameseOriginalPacket& originalOut)
         {
             // If the receiver has already seen all the packets we sent:
             nackElement = Window.ColumnToElement(column);
-            if (nackElement >= count)
+            if (nackElement >= count) {
                 break; // Stop here
+            }
 
             // Lookup original packet and send time
             OriginalPacket* original = Window.GetWindowElement(nackElement);
@@ -1027,10 +1039,12 @@ void Encoder::AddDenseColumns(unsigned row, uint8_t* productWorkspace)
             {
                 const GrowingAlignedDataBuffer* sum = Window.GetSum(laneIndex, sumIndex, Window.Count);
                 unsigned addBytes = sum->Bytes;
+
                 if (addBytes > 0)
                 {
-                    if (addBytes > recoveryBytes)
+                    if (addBytes > recoveryBytes) {
                         addBytes = recoveryBytes;
+                    }
                     gf256_add_mem(RecoveryPacket.Data, sum->Data, addBytes);
                 }
             }
@@ -1044,10 +1058,12 @@ void Encoder::AddDenseColumns(unsigned row, uint8_t* productWorkspace)
             {
                 const GrowingAlignedDataBuffer* sum = Window.GetSum(laneIndex, sumIndex, Window.Count);
                 unsigned addBytes = sum->Bytes;
+
                 if (addBytes > 0)
                 {
-                    if (addBytes > recoveryBytes)
+                    if (addBytes > recoveryBytes) {
                         addBytes = recoveryBytes;
+                    }
                     gf256_add_mem(productWorkspace, sum->Data, addBytes);
                 }
             }
@@ -1085,8 +1101,9 @@ void Encoder::AddLightColumns(unsigned row, uint8_t* productWorkspace)
         const unsigned elementRX         = startElement + (prng.Next() % count);
         const OriginalPacket* originalRX = Window.GetWindowElement(elementRX);
 
-        if (pDebugMsg)
+        if (pDebugMsg) {
             *pDebugMsg << element1 << " " << elementRX << " ";
+        }
 
         SIAMESE_DEBUG_ASSERT(original1->Column  == Window.ColumnStart + element1);
         SIAMESE_DEBUG_ASSERT(originalRX->Column == Window.ColumnStart + elementRX);
@@ -1106,8 +1123,9 @@ void Encoder::AddLightColumns(unsigned row, uint8_t* productWorkspace)
 
 SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
 {
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     // If there are no packets so far:
     if (Window.Count <= 0)
@@ -1117,15 +1135,17 @@ SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
     }
 
     // Remove any data from the window at this point
-    if (Window.FirstUnremovedElement >= kEncoderRemoveThreshold)
+    if (Window.FirstUnremovedElement >= kEncoderRemoveThreshold) {
         Window.RemoveElements();
+    }
 
     // Get the number of packets in the window that are in flight (unacked)
     const unsigned unacknowledgedCount = Window.GetUnacknowledgedCount();
 
     // If there is only a single packet so far:
-    if (unacknowledgedCount == 1)
+    if (unacknowledgedCount == 1) {
         return GenerateSinglePacket(packet);
+    }
 
     // Calculate upper bound on width of sum for this recovery packet
     SIAMESE_DEBUG_ASSERT(Window.Count + Window.SumErasedCount >= Window.SumStartElement);
@@ -1137,8 +1157,9 @@ SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
     {
 #ifdef SIAMESE_ENABLE_CAUCHY
         // If the number of packets in flight is small enough, use Cauchy rows for now:
-        if (unacknowledgedCount <= SIAMESE_CAUCHY_THRESHOLD)
+        if (unacknowledgedCount <= SIAMESE_CAUCHY_THRESHOLD) {
             return GenerateCauchyPacket(packet);
+        }
 #endif // SIAMESE_ENABLE_CAUCHY
 
         Logger.Debug("Resetting sums at element ", Window.FirstUnremovedElement);
@@ -1165,12 +1186,13 @@ SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
 
     // Advance row index
     const unsigned row = NextRow;
-    if (++NextRow >= kRowPeriod)
+    if (++NextRow >= kRowPeriod) {
         NextRow = 0;
+    }
 
     // Reset workspaces
     const unsigned recoveryBytes = Window.LongestPacket;
-    const unsigned alignedBytes  = pktalloc::NextAlignedOffset(recoveryBytes);
+    const unsigned alignedBytes = pktalloc::NextAlignedOffset(recoveryBytes);
     if (!RecoveryPacket.Initialize(&TheAllocator, 2 * alignedBytes + kMaxRecoveryMetadataBytes))
     {
         Window.EmergencyDisabled = true;
@@ -1190,7 +1212,7 @@ SiameseResult Encoder::Encode(SiameseRecoveryPacket& packet)
 
     RecoveryMetadata metadata;
     SIAMESE_DEBUG_ASSERT(Window.SumEndElement + Window.SumErasedCount >= Window.SumStartElement);
-    metadata.SumCount = Window.SumEndElement - Window.SumStartElement + Window.SumErasedCount;
+    metadata.SumCount    = Window.SumEndElement - Window.SumStartElement + Window.SumErasedCount;
     metadata.LDPCCount   = unacknowledgedCount;
     metadata.ColumnStart = Window.SumColumnStart;
     metadata.Row         = row;
@@ -1213,8 +1235,9 @@ SiameseResult Encoder::Get(SiameseOriginalPacket& originalOut)
 {
     // Note: Keep this in sync with Decoder::Get
 
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     // Note: This also works when Count == 0
     SIAMESE_DEBUG_ASSERT(originalOut.PacketNum >= Window.ColumnStart);

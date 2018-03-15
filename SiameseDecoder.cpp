@@ -44,8 +44,9 @@ namespace siamese {
 
 DecoderStats::DecoderStats()
 {
-    for (unsigned i = 0; i < SiameseDecoderStats_Count; ++i)
+    for (unsigned i = 0; i < SiameseDecoderStats_Count; ++i) {
         Counts[i] = 0;
+    }
 }
 
 
@@ -71,8 +72,9 @@ SiameseResult Decoder::Get(SiameseOriginalPacket& packetOut)
 {
     // Note: Keep this in sync with Encoder::Get
 
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     // Note: This also works when Count == 0
     const unsigned element = Window.ColumnToElement(packetOut.PacketNum);
@@ -125,8 +127,9 @@ SiameseResult Decoder::GenerateAcknowledgement(
     unsigned byteLimit,
     unsigned& usedBytesOut)
 {
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     SIAMESE_DEBUG_ASSERT(byteLimit >= SIAMESE_ACK_MIN_BYTES);
 
@@ -250,8 +253,9 @@ SiameseResult Decoder::GenerateAcknowledgement(
 
 SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
 {
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     // Deserialize the recovery metadata from the front of the packet
     RecoveryMetadata metadata;
@@ -283,7 +287,7 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
             return Siamese_Disabled;
         }
 
-        elementEnd   = metadata.SumCount;
+        elementEnd = metadata.SumCount;
         elementStart = elementEnd - metadata.LDPCCount;
 
         // This should only happen at the start if we get recovery first before data
@@ -320,11 +324,9 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
             {
                 const unsigned recoveryBytes = packet.DataBytes - footerSize;
 
-                // Update last recovery data
-                RecoveryPackets.LastRecovery.FirstKeptElement = elementStart;
-                RecoveryPackets.LastRecovery.InitialRecoveryBytes = recoveryBytes;
-                RecoveryPackets.LastRecovery.SumColumnCount = metadata.SumCount;
-                RecoveryPackets.LastRecovery.SumStartColumn = metadata.ColumnStart;
+                // Update the last received recovery metadata
+                RecoveryPackets.LastRecoveryMetadata = metadata;
+                RecoveryPackets.LastRecoveryBytes = recoveryBytes;
 
                 Window.RemoveElements();
             }
@@ -345,7 +347,11 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
                 const unsigned elementSumStart = Window.ColumnToElement(metadata.ColumnStart);
                 if (Window.InvalidElement(elementSumStart))
                 {
-                    Logger.Info("Recovery packet cannot be used because we clipped its Sum region already : Received too far out of order ? Window.SumColumnCount = ", Window.SumColumnCount, ", Window.SumColumnCount = ", Window.SumColumnCount, ", metadata.ColumnStart = ", metadata.ColumnStart);
+                    Logger.Info("Recovery packet cannot be used because we clipped its Sum region already : " \
+                        "Received too far out of order: Window.SumColumnStart = ",
+                        Window.SumColumnStart, ", Window.SumColumnCount = ", Window.SumColumnCount,
+                        ", metadata.ColumnStart = ", metadata.ColumnStart);
+
                     Stats.Counts[SiameseDecoderStats_DupedRecoveryCount]++;
                     return Siamese_Success;
                 }
@@ -404,8 +410,9 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
     RecoveryPackets.Insert(recovery);
 
     // Remove elements from the front if possible
-    if (elementStart >= kDecoderRemoveThreshold)
+    if (elementStart >= kDecoderRemoveThreshold) {
         Window.RemoveElements();
+    }
 
     return Siamese_Success;
 }
@@ -413,8 +420,7 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
 bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const RecoveryMetadata& metadata, int footerSize)
 {
     const unsigned element = Window.ColumnToElement(metadata.ColumnStart);
-    if (Window.InvalidElement(element))
-    {
+    if (Window.InvalidElement(element)) {
         SIAMESE_DEBUG_BREAK(); // Should never happen
         return false;
     }
@@ -424,8 +430,9 @@ bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const Recov
     OriginalPacket* windowOriginal = Window.GetWindowElement(element);
 
     // Ignore duplicate data
-    if (windowOriginal->Buffer.Bytes != 0)
+    if (windowOriginal->Buffer.Bytes != 0) {
         return true;
+    }
 
     // Check: Deserialize length from the front
     SIAMESE_DEBUG_ASSERT(packet.DataBytes > (unsigned)footerSize);
@@ -447,8 +454,7 @@ bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const Recov
 
     unsigned newHeaderBytes = windowOriginal->Initialize(&TheAllocator, original);
     SIAMESE_DEBUG_ASSERT(newHeaderBytes == (unsigned)headerBytes);
-    if (0 == newHeaderBytes)
-    {
+    if (0 == newHeaderBytes) {
         SIAMESE_DEBUG_BREAK(); // Invalid input
         return false;
     }
@@ -463,13 +469,11 @@ bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const Recov
     original.Data = windowOriginal->Buffer.Data + newHeaderBytes;
     SIAMESE_DEBUG_ASSERT(original.DataBytes == windowOriginal->Buffer.Bytes - headerBytes);
 
-    if (!Window.RecoveredPackets.Append(original))
-    {
+    if (!Window.RecoveredPackets.Append(original)) {
         SIAMESE_DEBUG_BREAK(); // OOM
         return false;
     }
-    if (!Window.RecoveredColumns.Append(metadata.ColumnStart))
-    {
+    if (!Window.RecoveredColumns.Append(metadata.ColumnStart)) {
         SIAMESE_DEBUG_BREAK(); // OOM
         return false;
     }
@@ -493,8 +497,9 @@ bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const Recov
 
         RecoveryPackets.DeletePacketsBefore(Window.NextExpectedElement);
 
-        if (CheckedRegion.NextCheckStart >= kDecoderRemoveThreshold)
+        if (CheckedRegion.NextCheckStart >= kDecoderRemoveThreshold) {
             Window.RemoveElements();
+        }
     }
 
     return true;
@@ -502,8 +507,9 @@ bool Decoder::AddSingleRecovery(const SiameseRecoveryPacket& packet, const Recov
 
 bool Decoder::CheckRecoveryPossible()
 {
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return false;
+    }
 
     RecoveryPacket* recovery;
     unsigned nextCheckStart, recoveryCount, lostCount;
@@ -512,8 +518,9 @@ bool Decoder::CheckRecoveryPossible()
     if (!CheckedRegion.LastRecovery)
     {
         recovery = RecoveryPackets.Head;
-        if (!recovery)
+        if (!recovery) {
             return false; // No recovery data
+        }
 
         CheckedRegion.FirstRecovery = recovery;
         CheckedRegion.ElementStart  = recovery->ElementStart;
@@ -536,8 +543,9 @@ bool Decoder::CheckRecoveryPossible()
         if (recoveryCount >= lostCount && !CheckedRegion.SolveFailed)
         {
             // If maximum loss recovery count is exceeded:
-            if (lostCount > kMaximumLossRecoveryCount)
+            if (lostCount > kMaximumLossRecoveryCount) {
                 return false; // Limit was hit
+            }
             return true; // It is already possible
         }
 
@@ -556,8 +564,9 @@ bool Decoder::CheckRecoveryPossible()
         // Accumulate losses within the range of this recovery packet, skipping
         // losses we've already accumulated into the checked region
         unsigned elementEnd = recovery->ElementEnd;
-        if (elementEnd < nextCheckStart)
+        if (elementEnd < nextCheckStart) {
             elementEnd = nextCheckStart; // This can happen when interleaved with Cauchy packets
+        }
         Logger.Debug("RecoveryPossible? Searching between ", nextCheckStart, " and ", elementEnd);
         lostCount += Window.RangeLostPackets(nextCheckStart, elementEnd);
         SIAMESE_DEBUG_ASSERT(lostCount > 0);
@@ -578,16 +587,18 @@ bool Decoder::CheckRecoveryPossible()
     Logger.Debug("RecoveryPossible? LostCount=", CheckedRegion.LostCount, " RecoveryCount=", CheckedRegion.RecoveryCount);
 
     // If maximum loss recovery count is exceeded:
-    if (lostCount > kMaximumLossRecoveryCount)
+    if (lostCount > kMaximumLossRecoveryCount) {
         return false; // Limit was hit
+    }
 
     return recoveryCount >= lostCount && !CheckedRegion.SolveFailed;
 }
 
 SiameseResult Decoder::Decode(SiameseOriginalPacket** packetsPtrOut, unsigned* countOut)
 {
-    if (Window.EmergencyDisabled)
+    if (Window.EmergencyDisabled) {
         return Siamese_Disabled;
+    }
 
     // If there are already recovered packets to report:
     if (Window.HasRecoveredPackets)
@@ -620,8 +631,9 @@ SiameseResult Decoder::Decode(SiameseOriginalPacket** packetsPtrOut, unsigned* c
     */
 
     // Advance the checked region to the first possible solution
-    if (!CheckRecoveryPossible())
+    if (!CheckRecoveryPossible()) {
         return Siamese_NeedMoreData;
+    }
 
     RecoveryPacket* recovery = CheckedRegion.LastRecovery;
     unsigned nextCheckStart  = CheckedRegion.NextCheckStart;
@@ -648,20 +660,23 @@ SiameseResult Decoder::Decode(SiameseOriginalPacket** packetsPtrOut, unsigned* c
                 return Siamese_Success;
             }
 
-            if (result != Siamese_NeedMoreData)
+            if (result != Siamese_NeedMoreData) {
                 return result;
+            }
         }
 
-        if (recovery->Next == nullptr)
+        if (recovery->Next == nullptr) {
             break;
+        }
         recovery = recovery->Next;
         ++recoveryCount;
 
         // Accumulate losses within the range of this recovery packet, skipping
         // losses we've already accumulated into the checked region
         unsigned elementEnd = recovery->ElementEnd;
-        if (elementEnd < nextCheckStart)
+        if (elementEnd < nextCheckStart) {
             elementEnd = nextCheckStart; // This can happen when interleaved with Cauchy packets
+        }
         lostCount += Window.RangeLostPackets(nextCheckStart, elementEnd);
 
         // Keep track of how many lost packets this recovery packet is facing
@@ -778,8 +793,9 @@ bool Decoder::EliminateOriginalData()
     // Eliminate data in sorted row order regardless of pivot order:
     for (unsigned matrixRowIndex = 0; matrixRowIndex < rows; ++matrixRowIndex)
     {
-        if (!RecoveryMatrix.Rows.GetRef(matrixRowIndex).UsedForSolution)
+        if (!RecoveryMatrix.Rows.GetRef(matrixRowIndex).UsedForSolution) {
             continue;
+        }
 
         RecoveryPacket* recovery        = RecoveryMatrix.Rows.GetRef(matrixRowIndex).Recovery;
         const RecoveryMetadata metadata = recovery->Metadata;
@@ -802,8 +818,7 @@ bool Decoder::EliminateOriginalData()
                     unsigned addBytes = original->Buffer.Bytes;
                     if (addBytes > 0)
                     {
-                        if (addBytes > recoveryBuffer.Bytes)
-                        {
+                        if (addBytes > recoveryBuffer.Bytes) {
                             SIAMESE_DEBUG_BREAK(); // Should never happen
                             addBytes = recoveryBuffer.Bytes;
                         }
@@ -821,8 +836,7 @@ bool Decoder::EliminateOriginalData()
                     if (addBytes > 0)
                     {
                         const uint8_t y = CauchyElement(metadata.Row - 1, original->Column % kCauchyMaxColumns);
-                        if (addBytes > recoveryBuffer.Bytes)
-                        {
+                        if (addBytes > recoveryBuffer.Bytes) {
                             SIAMESE_DEBUG_BREAK(); // Should never happen
                             addBytes = recoveryBuffer.Bytes;
                         }
@@ -837,25 +851,68 @@ bool Decoder::EliminateOriginalData()
 
         // Zero the product sum
         const unsigned recoveryBytes = recoveryBuffer.Bytes;
-        if (!ProductSum.Initialize(&TheAllocator, recoveryBytes))
+        if (!ProductSum.Initialize(&TheAllocator, recoveryBytes)) {
             return false;
+        }
         memset(ProductSum.Data, 0, recoveryBytes);
 
         Logger.Debug("Starting sums for row=", recovery->Metadata.Row, " start=", recovery->Metadata.ColumnStart, " count=", recovery->Metadata.SumCount);
 
-        // Determine sum start element
+        // Convert column start to window element.
+        // If some of the summed elements have fallen out of the window,
+        // then start it at the first element in the window (0).
         unsigned sumElementStart = Window.ColumnToElement(recovery->Metadata.ColumnStart);
-        if (Window.InvalidElement(sumElementStart))
-            sumElementStart = 0;
 
+        /*
+            If the recovery packet indicates a different siamese sum, then we
+            will need to clear the running sums and recreate them from scratch.
+
+            Sums need to be restarted if the start point changed, which should
+            be a jump of over 128 packets that were acknowledged.  They would
+            also need to be restarted if the number of summed columns has
+            reduced instead of increased.  In both cases, data needs to be
+            removed from the running sum.  Instead of being clever about how to
+            remove that data, we just start over from scratch to avoid a huge
+            amount of extra complexity.
+
+            TBD: Collect real data on how much it would help to checkpoint on
+            the decoder side.  I suspect it would not help much because multi-
+            packet losses probably do not often straddle these checkpoints.
+            For example if start point changes 1/128 packets, then the benefit
+            of checkpoints is only felt in about 1% of the multi-loss cases,
+            which are already much less common than single losses.
+
+            Due to the way we order recovery packets in the list, and therefore
+            how they get ordered as matrix rows for the matrix we are solving,
+            often times sums will only roll forward or skip ahead.
+        */
         if (metadata.ColumnStart != Window.SumColumnStart ||
             metadata.SumCount < Window.SumColumnCount)
         {
+            // If we have to restart the sums but the data is not available:
+            if (Window.InvalidElement(sumElementStart)) {
+                // This should never happen.  The code that decides when to
+                // remove data from the window should have kept this data.
+                SIAMESE_DEBUG_BREAK();
+                return false;
+            }
+
             Window.ResetSums(sumElementStart);
             Window.SumColumnStart = metadata.ColumnStart;
         }
-        else if (!Window.StartSums(sumElementStart, recoveryBytes))
-            return false;
+        else
+        {
+            if (Window.InvalidElement(sumElementStart)) {
+                sumElementStart = 0;
+            }
+
+            // Prepare any lane sums that have not accumulated data yet to
+            // receive data, since we are about to start accumulaing into
+            // some of these running sums.
+            if (!Window.StartSums(sumElementStart, recoveryBytes)) {
+                return false;
+            }
+        }
         Window.SumColumnCount = metadata.SumCount;
 
         // Eliminate dense recovery data outside of matrix:
@@ -870,11 +927,13 @@ bool Decoder::EliminateOriginalData()
                 if (opcode & mask)
                 {
                     const GrowingAlignedDataBuffer* sum = Window.GetSum(laneIndex, sumIndex, elementEnd);
+                    SIAMESE_DEBUG_ASSERT(elementEnd + kColumnLaneCount >= Window.Lanes[laneIndex].Sums[sumIndex].ElementEnd);
                     unsigned addBytes = sum->Bytes;
                     if (addBytes > 0)
                     {
-                        if (addBytes > recoveryBytes)
+                        if (addBytes > recoveryBytes) {
                             addBytes = recoveryBytes;
+                        }
                         gf256_add_mem(recoveryBuffer.Data, sum->Data, addBytes);
                     }
                 }
@@ -887,6 +946,7 @@ bool Decoder::EliminateOriginalData()
                 if (opcode & mask)
                 {
                     const GrowingAlignedDataBuffer* sum = Window.GetSum(laneIndex, sumIndex, elementEnd);
+                    SIAMESE_DEBUG_ASSERT(elementEnd + kColumnLaneCount >= Window.Lanes[laneIndex].Sums[sumIndex].ElementEnd);
                     unsigned addBytes = sum->Bytes;
                     if (addBytes > 0)
                     {
@@ -981,7 +1041,7 @@ bool Decoder::MultiplyLowerTriangle()
     {
         const unsigned matrixRowIndex_i = RecoveryMatrix.Pivots.GetRef(col_i);
         const GrowingAlignedDataBuffer& recovery_i = RecoveryMatrix.Rows.GetRef(matrixRowIndex_i).Recovery->Buffer;
-        const uint8_t* srcData  = recovery_i.Data;
+        const uint8_t* srcData = recovery_i.Data;
         const unsigned srcBytes = recovery_i.Bytes;
         SIAMESE_DEBUG_ASSERT(srcData && srcBytes > 0);
 
@@ -990,15 +1050,18 @@ bool Decoder::MultiplyLowerTriangle()
             const unsigned matrixRowIndex_j = RecoveryMatrix.Pivots.GetRef(col_j);
             const uint8_t y = RecoveryMatrix.Matrix.Get(matrixRowIndex_j, col_i);
 
-            if (y == 0)
+            // If this row does not reference this column:
+            if (y == 0) {
                 continue;
+            }
 
             GrowingAlignedDataBuffer& recovery_j = RecoveryMatrix.Rows.GetRef(matrixRowIndex_j).Recovery->Buffer;
             SIAMESE_DEBUG_ASSERT(recovery_j.Data && recovery_j.Bytes > 0);
 
             // Make room for the summation
-            if (!recovery_j.GrowZeroPadded(&TheAllocator, srcBytes))
+            if (!recovery_j.GrowZeroPadded(&TheAllocator, srcBytes)) {
                 return false;
+            }
 
             gf256_muladd_mem(recovery_j.Data, y, srcData, srcBytes);
         }
@@ -1021,8 +1084,8 @@ SiameseResult Decoder::BackSubstitution()
     for (int col_i = columns - 1; col_i >= 0; --col_i)
     {
         const unsigned matrixRowIndex = RecoveryMatrix.Pivots.GetRef(col_i);
-        OriginalPacket* original      = RecoveryMatrix.Columns.GetRef(col_i).Original;
-        RecoveryPacket* recovery      = RecoveryMatrix.Rows.GetRef(matrixRowIndex).Recovery;
+        OriginalPacket* original = RecoveryMatrix.Columns.GetRef(col_i).Original;
+        RecoveryPacket* recovery = RecoveryMatrix.Rows.GetRef(matrixRowIndex).Recovery;
         SIAMESE_DEBUG_ASSERT(original->Column == (unsigned)col_i && original->Buffer.Bytes == 0);
 
         uint8_t* buffer = recovery->Buffer.Data;
@@ -1030,13 +1093,15 @@ SiameseResult Decoder::BackSubstitution()
 
         SIAMESE_DEBUG_ASSERT(buffer && recovery->Buffer.Bytes > 0);
         SIAMESE_DEBUG_ASSERT(y != 0);
+        const uint8_t inv_y = gf256_inv(y);
 
         // Reveal the first chunk of bytes of data
-        unsigned bufferBytes      = recovery->Buffer.Bytes;
+        unsigned bufferBytes = recovery->Buffer.Bytes;
         unsigned lengthCheckBytes = pktalloc::kAlignmentBytes;
-        if (lengthCheckBytes > bufferBytes)
+        if (lengthCheckBytes > bufferBytes) {
             lengthCheckBytes = bufferBytes;
-        gf256_div_mem(buffer, buffer, y, lengthCheckBytes);
+        }
+        gf256_mul_mem(buffer, buffer, inv_y, lengthCheckBytes);
 
         // Check the embedded length field
         unsigned length;
@@ -1057,8 +1122,13 @@ SiameseResult Decoder::BackSubstitution()
 
         // Reduce buffer bytes to only cover the original packet data
         bufferBytes = headerBytes + length;
-        if (bufferBytes > lengthCheckBytes)
-            gf256_div_mem(buffer + lengthCheckBytes, buffer + lengthCheckBytes, y, bufferBytes - lengthCheckBytes);
+        if (bufferBytes > lengthCheckBytes) {
+            gf256_mul_mem(
+                buffer + lengthCheckBytes,
+                buffer + lengthCheckBytes,
+                inv_y,
+                bufferBytes - lengthCheckBytes);
+        }
 
         // Swap original and recovery buffers
         uint8_t* oldOriginalData = original->Buffer.Data;
@@ -1092,15 +1162,15 @@ SiameseResult Decoder::BackSubstitution()
             unsigned pivot_j = RecoveryMatrix.Pivots.GetRef(col_j);
             const uint8_t x  = RecoveryMatrix.Matrix.Get(pivot_j, col_i);
 
-            if (x == 0)
+            if (x == 0) {
                 continue;
+            }
 
             const GrowingAlignedDataBuffer& buffer_j = RecoveryMatrix.Rows.GetRef(pivot_j).Recovery->Buffer;
             SIAMESE_DEBUG_ASSERT(buffer_j.Data && buffer_j.Bytes > 0);
 
             unsigned addBytes = bufferBytes;
-            if (addBytes > buffer_j.Bytes)
-            {
+            if (addBytes > buffer_j.Bytes) {
                 SIAMESE_DEBUG_BREAK(); // This should never happen
                 addBytes = buffer_j.Bytes;
             }
@@ -1125,8 +1195,9 @@ SiameseResult Decoder::BackSubstitution()
 
     RecoveryPackets.DeletePacketsBefore(Window.NextExpectedElement);
 
-    if (CheckedRegion.NextCheckStart >= kDecoderRemoveThreshold)
+    if (CheckedRegion.NextCheckStart >= kDecoderRemoveThreshold) {
         Window.RemoveElements();
+    }
 
     Stats.Counts[SiameseDecoderStats_SolveSuccessCount]++;
 
@@ -1135,14 +1206,16 @@ SiameseResult Decoder::BackSubstitution()
 
 SiameseResult Decoder::GetStatistics(uint64_t* statsOut, unsigned statsCount)
 {
-    if (statsCount > SiameseDecoderStats_Count)
+    if (statsCount > SiameseDecoderStats_Count) {
         statsCount = SiameseDecoderStats_Count;
+    }
 
     // Fill in memory allocated
     Stats.Counts[SiameseDecoderStats_MemoryUsed] = TheAllocator.GetMemoryAllocatedBytes();
 
-    for (unsigned i = 0; i < statsCount; ++i)
+    for (unsigned i = 0; i < statsCount; ++i) {
         statsOut[i] = Stats.Counts[i];
+    }
 
     return Siamese_Success;
 }
@@ -1172,8 +1245,9 @@ bool DecoderPacketWindow::MarkGotColumn(unsigned column)
 
 unsigned DecoderPacketWindow::RangeLostPackets(unsigned elementStart, unsigned elementEnd)
 {
-    if (elementStart >= elementEnd)
+    if (elementStart >= elementEnd) {
         return 0;
+    }
 
     unsigned lostCount = 0;
 
@@ -1184,8 +1258,9 @@ unsigned DecoderPacketWindow::RangeLostPackets(unsigned elementStart, unsigned e
     if (bitStart > 0)
     {
         unsigned bitEnd = bitStart + elementEnd - elementStart;
-        if (bitEnd > kSubwindowSize)
+        if (bitEnd > kSubwindowSize) {
             bitEnd = kSubwindowSize;
+        }
         const unsigned bitMaxSet = bitEnd - bitStart; // Bit count in range
         lostCount += bitMaxSet - Subwindows.GetRef(subwindowStart)->Got.RangePopcount(bitStart, bitEnd);
         ++subwindowStart;
@@ -1194,15 +1269,21 @@ unsigned DecoderPacketWindow::RangeLostPackets(unsigned elementStart, unsigned e
     // Accumulate whole subwindows of losses
     const unsigned subwindowEnd = elementEnd / kSubwindowSize;
     SIAMESE_DEBUG_ASSERT(subwindowEnd <= Subwindows.GetSize());
-    for (unsigned i = subwindowStart; i < subwindowEnd; ++i)
+    for (unsigned i = subwindowStart; i < subwindowEnd; ++i) {
         lostCount += kSubwindowSize - Subwindows.GetRef(i)->GotCount;
+    }
 
     // Accumulate last partial subwindow (if any, common case)
     if (subwindowEnd >= subwindowStart)
     {
         const unsigned lastSubwindowBits = elementEnd - subwindowEnd * kSubwindowSize;
+
         if (lastSubwindowBits > 0)
-            lostCount += lastSubwindowBits - Subwindows.GetRef(subwindowEnd)->Got.RangePopcount(0, lastSubwindowBits);
+        {
+            const unsigned gotCount = Subwindows.GetRef(subwindowEnd)->Got.RangePopcount(0, lastSubwindowBits);
+
+            lostCount += lastSubwindowBits - gotCount;
+        }
     }
 
     return lostCount;
@@ -1210,8 +1291,9 @@ unsigned DecoderPacketWindow::RangeLostPackets(unsigned elementStart, unsigned e
 
 unsigned DecoderPacketWindow::FindNextLostElement(unsigned elementStart)
 {
-    if (elementStart >= Count)
+    if (elementStart >= Count) {
         return Count;
+    }
 
     const unsigned subwindowEnd = (Count + kSubwindowSize - 1) / kSubwindowSize;
     unsigned subwindowIndex = elementStart / kSubwindowSize;
@@ -1230,13 +1312,15 @@ unsigned DecoderPacketWindow::FindNextLostElement(unsigned elementStart)
                 bitIndex = Subwindows.GetRef(subwindowIndex)->Got.FindFirstClear(bitIndex);
 
                 // If there were none, skip this subwindow
-                if (bitIndex >= kSubwindowSize)
+                if (bitIndex >= kSubwindowSize) {
                     break;
+                }
 
                 // Calculate element index and stop if we hit the end of the valid data
                 unsigned nextElement = subwindowIndex * kSubwindowSize + bitIndex;
-                if (nextElement > Count)
+                if (nextElement > Count) {
                     nextElement = Count;
+                }
 
                 return nextElement;
             }
@@ -1254,8 +1338,9 @@ unsigned DecoderPacketWindow::FindNextLostElement(unsigned elementStart)
 
 unsigned DecoderPacketWindow::FindNextGotElement(unsigned elementStart)
 {
-    if (elementStart >= Count)
+    if (elementStart >= Count) {
         return Count;
+    }
 
     const unsigned subwindowEnd = (Count + kSubwindowSize - 1) / kSubwindowSize;
     unsigned subwindowIndex = elementStart / kSubwindowSize;
@@ -1274,13 +1359,15 @@ unsigned DecoderPacketWindow::FindNextGotElement(unsigned elementStart)
                 bitIndex = Subwindows.GetRef(subwindowIndex)->Got.FindFirstSet(bitIndex);
 
                 // If there were none, skip this subwindow
-                if (bitIndex >= kSubwindowSize)
+                if (bitIndex >= kSubwindowSize) {
                     break;
+                }
 
                 // Calculate element index and stop if we hit the end of the valid data
                 unsigned nextElement = subwindowIndex * kSubwindowSize + bitIndex;
-                if (nextElement > Count)
+                if (nextElement > Count) {
                     nextElement = Count;
+                }
 
                 return nextElement;
             }
@@ -1299,8 +1386,9 @@ unsigned DecoderPacketWindow::FindNextGotElement(unsigned elementStart)
 void DecoderPacketWindow::IterateNextExpectedElement(unsigned elementStart)
 {
     SIAMESE_DEBUG_ASSERT(elementStart > NextExpectedElement);
-    if (NextExpectedElement >= Count)
+    if (NextExpectedElement >= Count) {
         return;
+    }
 
     SIAMESE_DEBUG_ASSERT(RangeLostPackets(0, NextExpectedElement) == 0);
     SIAMESE_DEBUG_ASSERT(RangeLostPackets(NextExpectedElement, elementStart) == 0);
@@ -1482,14 +1570,18 @@ bool DecoderPacketWindow::PlugSumHoles(unsigned elementStart)
 
 void DecoderPacketWindow::ResetSums(unsigned elementStart)
 {
-    Logger.Info("Clearing all sums");
+    Logger.Info("ResetSums at ", elementStart);
 
+    // For each lane:
     for (unsigned laneIndex = 0; laneIndex < kColumnLaneCount; ++laneIndex)
     {
+        // Find the next window element that is in this lane beginning at `elementStart`
         const unsigned laneElementStart = GetNextLaneElement(elementStart, laneIndex);
 
+        // For each of the sums in the lane:
         for (unsigned sumIndex = 0; sumIndex < kColumnSumCount; ++sumIndex)
         {
+            // Clear the buffer and element start/end range
             DecoderSum& sum  = Lanes[laneIndex].Sums[sumIndex];
             sum.ElementStart = laneElementStart;
             sum.ElementEnd   = laneElementStart;
@@ -1497,6 +1589,7 @@ void DecoderPacketWindow::ResetSums(unsigned elementStart)
         }
     }
 
+    // Clear recovered packets to avoid double-plugging holes in the sums
     RecoveredColumns.Clear();
 }
 
@@ -1504,6 +1597,7 @@ bool DecoderPacketWindow::StartSums(unsigned elementStart, unsigned bufferBytes)
 {
     for (unsigned laneIndex = 0; laneIndex < kColumnLaneCount; ++laneIndex)
     {
+        // Get the next window element in this lane beginning with `elementStart`
         const unsigned laneElementStart = GetNextLaneElement(elementStart, laneIndex);
 
         for (unsigned sumIndex = 0; sumIndex < kColumnSumCount; ++sumIndex)
@@ -1521,7 +1615,7 @@ bool DecoderPacketWindow::StartSums(unsigned elementStart, unsigned bufferBytes)
             {
                 Logger.Debug("Restarting sum for ", laneIndex, " sum ", sumIndex, " at column ", laneElementStart + ColumnStart, " current sum bytes = ", sum.Buffer.Bytes);
 
-                sum.ElementEnd   = laneElementStart;
+                sum.ElementEnd = laneElementStart;
                 sum.Buffer.Bytes = 0;
             }
 
@@ -1529,8 +1623,9 @@ bool DecoderPacketWindow::StartSums(unsigned elementStart, unsigned bufferBytes)
             sum.ElementStart = laneElementStart;
 
             // Grow and zero pad
-            if (!sum.Buffer.GrowZeroPadded(TheAllocator, bufferBytes))
+            if (!sum.Buffer.GrowZeroPadded(TheAllocator, bufferBytes)) {
                 return false;
+            }
 
             SIAMESE_DEBUG_ASSERT((sum.ElementStart + ColumnStart) % kColumnLaneCount == laneIndex);
             SIAMESE_DEBUG_ASSERT((sum.ElementEnd   + ColumnStart) % kColumnLaneCount == laneIndex);
@@ -1538,8 +1633,13 @@ bool DecoderPacketWindow::StartSums(unsigned elementStart, unsigned bufferBytes)
     }
 
     // If we have previously recovered packets, use them to plug holes in the sums:
-    if (RecoveredColumns.GetSize() != 0 && !PlugSumHoles(elementStart))
-        return false;
+    if (RecoveredColumns.GetSize() != 0) {
+        // If holes cannot be plugged:
+        if (!PlugSumHoles(elementStart)) {
+            SIAMESE_DEBUG_BREAK(); // Should never happen
+            return false;
+        }
+    }
 
     return true;
 }
@@ -1553,8 +1653,9 @@ const GrowingAlignedDataBuffer* DecoderPacketWindow::GetSum(unsigned laneIndex, 
     SIAMESE_DEBUG_ASSERT((sum.ElementEnd + ColumnStart) % kColumnLaneCount == laneIndex);
 
     unsigned element = sum.ElementEnd;
-    if (element >= elementEnd)
+    if (element >= elementEnd) {
         return &sum.Buffer;
+    }
 
     // For each element to accumulate in this lane:
     do
@@ -1605,134 +1706,157 @@ ExitSum:
 }
 
 /*
-    IdentifyRemovalPoint
+    We need to eventually remove elements from the window to avoid using
+    a lot of memory.  One easy way to simplify this would be to wait
+    until there are no recovery packets referencing lost data.  But if
+    there are continuous packet losses, we may never remove any data from
+    the window because there may always be more losses to fix.
 
-    This routine identifies where data can be removed from the window,
-    without removing anything that is still useful for recovery.
+    The encoder will keep the sums running for a very long time if data
+    is constantly being lost - up to about 16000 packets.
 
-    The LDPC/Cauchy start columns are where data needs to be kept for
-    certain because that is where individual packet data is required.
-    For the Siamese running sums, data in the sums can be removed as
-    long as all the sums are accumulated past the removal point.
-    So we identify the first column to keep and roll the sums up past
-    that point.
+    When removing packets from the window, we may need to accumulate the
+    packet data into a running sum so that it can be used later.
 
-    If we have any recovery packets stored, the metadata will describe
-    the LDPC/Cauchy start column.  If no packets are stored, then the
-    newest recovery packet we have received can be used.
+
+    Worked examples:
+
+    The recovery rows may look like this:
+    3 4 5 6 7 8 ... 128 129 130
+    3 4 5 6 7 8 ... 128 129 130 131
+
+    In this case we can remove up to element 128 and roll up the sums.
+    This assumes that we will not receive a recovery row that starts the sums
+    over at an element before 128.  We can tell that the encoder will not
+    choose to start sums before 128 if the latest LDPC range it picked starts
+    after 128.  And in general, any LDPC/Cauchy ranges cannot be clipped.
+
+    The recovery rows may look like this:
+    3 4 5 6 7 8 ... 128 129 130
+    3 4 5 6 7 8 ... 128 129 130 131
+          6 7 8 ... 128 129 130 131 132
+          6 7 8 ... 128 129 130 131 132 133
+
+    When solving we will need to restart at 6 to compute the third and the
+    fourth row.  This means we must keep 6 and later, even if the LDPC count
+    for these rows only includes the last few packets.
 */
-bool DecoderPacketWindow::IdentifyRemovalPoint(RemovalPoint& pointOut)
-{
-    pointOut = RemovalPoint();
-
-    // Quick sanity check to make sure we do not remove too much
-    if (NextExpectedElement < kDecoderRemoveThreshold)
-        return false;
-
-    // If there are no recovery packets in the list:
-    if (RecoveryPackets->IsEmpty())
-    {
-        // If there has not been a recent recovery packet:
-        if (RecoveryPackets->LastRecovery.IsEmpty())
-        {
-            SIAMESE_DEBUG_BREAK(); // Should never get here
-            return false;
-        }
-
-        // Use the most recent one
-        pointOut = RecoveryPackets->LastRecovery;
-
-        // FIXME: If we never send any recovery packets we still need to remove data from the window eventually
-        /*
-            Idea: ACK-ACKs - Make acknowledgement messages acknowledged.
-            Benefits also include long-tail tail latency improvement.
-            Include in the ACK-ACK message the recovery index so we can eliminate old data.
-        */
-
-        // Return true if there are at least kDecoderRemoveThreshold elements to remove
-        return pointOut.FirstKeptElement >= kDecoderRemoveThreshold;
-    }
-
-    // Search for the left-most edge of the recovery matrix
-    const RecoveryPacket* recovery = RecoveryPackets->Head;
-    pointOut.FirstKeptElement      = recovery->ElementStart;
-    pointOut.InitialRecoveryBytes  = recovery->Buffer.Bytes;
-    bool onlyCauchy = true;
-
-#ifdef SIAMESE_ENABLE_CAUCHY
-    goto StartRecoveryListCheck;
-
-    for (; recovery; recovery = recovery->Next)
-    {
-        if (pointOut.FirstKeptElement > recovery->ElementStart)
-            pointOut.FirstKeptElement = recovery->ElementStart;
-        if (pointOut.InitialRecoveryBytes < recovery->Buffer.Bytes)
-            pointOut.InitialRecoveryBytes = recovery->Buffer.Bytes;
-
-StartRecoveryListCheck:
-        // Skip Cauchy and parity rows
-        if (recovery->Metadata.SumCount <= SIAMESE_CAUCHY_THRESHOLD)
-            continue;
-
-        pointOut.SumStartColumn = recovery->Metadata.ColumnStart;
-        onlyCauchy = false;
-
-        // Note: The first Siamese row will have the smallest ElementStart, so we can stop searching here
-        break;
-    }
-
-    // Scan the rest of the list because the LDPC range can shrink.
-    // (The list is only ordered by the sum region.)
-    for (; recovery; recovery = recovery->Next)
-    {
-        if (pointOut.FirstKeptElement > recovery->ElementStart)
-            pointOut.FirstKeptElement = recovery->ElementStart;
-        if (pointOut.InitialRecoveryBytes < recovery->Buffer.Bytes)
-            pointOut.InitialRecoveryBytes = recovery->Buffer.Bytes;
-    }
-#else
-    pointOut.SumStartColumn = recovery->Metadata.ColumnStart;
-    onlyCauchy = false;
-#endif
-
-    SIAMESE_DEBUG_ASSERT(!InvalidElement(pointOut.FirstKeptElement));
-
-    // If recovery list only contains Cauchy rows:
-    if (onlyCauchy)
-    {
-        // Note that if we see Cauchy rows again it means the encoder reset its sums small enough to
-        // start sending those again, so we can use that as an indicator to reset ours also.
-        // Reset the sum column count to zero, which will prevent us from rolling up any running sums.
-        // Furthermore when a sum is encountered it will be reset during recovery.
-        SumColumnCount = 0;
-    }
-
-#ifdef SIAMESE_DEBUG
-    // Verify this is correct
-    for (RecoveryPacket* testPacket = RecoveryPackets->Head; testPacket; testPacket = testPacket->Next)
-    {
-#ifdef SIAMESE_ENABLE_CAUCHY
-        // Skip Cauchy and parity rows
-        if (testPacket->Metadata.SumCount <= SIAMESE_CAUCHY_THRESHOLD)
-            continue;
-#endif
-        SIAMESE_DEBUG_ASSERT(pointOut.FirstKeptElement <= testPacket->ElementStart);
-        SIAMESE_DEBUG_ASSERT(!IsColumnDeltaNegative(SubtractColumns(testPacket->Metadata.ColumnStart, pointOut.SumStartColumn)));
-    }
-#endif
-
-    // Return true if there are at least kDecoderRemoveThreshold elements to remove
-    return pointOut.FirstKeptElement >= kDecoderRemoveThreshold;
-}
 
 void DecoderPacketWindow::RemoveElements()
 {
-    // Abort if we cannot identify a valid removal point
-    RemovalPoint removalPoint;
-    if (!IdentifyRemovalPoint(removalPoint))
+    // Quick sanity check to make sure we keep some elements around
+    if (NextExpectedElement < kDecoderRemoveThreshold) {
         return;
+    }
 
-    const unsigned firstKeptSubwindow  = removalPoint.FirstKeptElement / kSubwindowSize;
+    // Calculate the earliest LDPC element
+    unsigned firstKeptElement = 0;
+
+    // Calculate the sum start column that we would like to be using
+    // based on the recovery data received so far.  This is used to
+    // start a running sum if one is currently not in progress
+    unsigned targetSumStartColumn = 0;
+    unsigned targetSumColumnCount = 0;
+    unsigned initialRecoveryBytes = 0;
+    bool seenSum = false;
+
+    // If there are no recovery packets in the list:
+    const RecoveryPacket* recovery = RecoveryPackets->Head;
+    if (!recovery)
+    {
+        const RecoveryMetadata metadata = RecoveryPackets->LastRecoveryMetadata;
+        const unsigned elementEnd = ColumnToElement(metadata.ColumnStart + metadata.SumCount);
+
+        // If the LDPC data was already clipped:
+        if (IsColumnDeltaNegative(elementEnd) ||
+            elementEnd < metadata.LDPCCount)
+        {
+            SIAMESE_DEBUG_BREAK(); // Should never happen
+            Logger.Error("LastRecoveryMetadata column ", metadata.ColumnStart, " was clipped");
+            EmergencyDisabled = true;
+            return;
+        }
+
+        firstKeptElement = elementEnd - metadata.LDPCCount;
+        targetSumStartColumn = metadata.ColumnStart;
+        targetSumColumnCount = metadata.SumCount;
+        initialRecoveryBytes = RecoveryPackets->LastRecoveryBytes;
+
+#ifdef SIAMESE_ENABLE_CAUCHY
+        if (metadata.SumCount > SIAMESE_CAUCHY_THRESHOLD)
+#endif
+        {
+            seenSum = true;
+        }
+    }
+    else
+    {
+        firstKeptElement = recovery->ElementStart;
+        initialRecoveryBytes = recovery->Buffer.Bytes;
+
+        // For each received recovery packet:
+        for (;;)
+        {
+            const unsigned sumCount = recovery->Metadata.SumCount;
+            const unsigned columnStart = recovery->Metadata.ColumnStart;
+#ifdef SIAMESE_ENABLE_CAUCHY
+            if (sumCount > SIAMESE_CAUCHY_THRESHOLD)
+#endif
+            {
+                if (!seenSum)
+                {
+                    // This should only take the first sum start/count into
+                    // account because if we accumulate any data it will be
+                    // for the first row in the matrix that is running sums.
+                    targetSumStartColumn = columnStart;
+                    targetSumColumnCount = sumCount;
+                    seenSum = true;
+                }
+                // If there is a second sum start column:
+                else if (columnStart != targetSumStartColumn ||
+                         sumCount < targetSumColumnCount)
+                {
+                    unsigned firstSumElement = ColumnToElement(columnStart);
+
+                    // Check if we clipped the second start column:
+                    if (InvalidElement(firstSumElement))
+                    {
+                        EmergencyDisabled = true;
+                        Logger.Error("RemoveElements failed: Two start columns and one was clipped");
+                        SIAMESE_DEBUG_BREAK(); // Should never happen
+                        return;
+                    }
+
+                    // If there are two start columns then we cannot clip the
+                    // second one, so keep it in the window.
+                    if (firstKeptElement > firstSumElement) {
+                        firstKeptElement = firstSumElement;
+                    }
+                }
+            }
+
+            // Try next recovery packet
+            recovery = recovery->Next;
+            if (!recovery) {
+                break;
+            }
+
+            // If we found an earlier element, use it:
+            if (firstKeptElement > recovery->ElementStart) {
+                firstKeptElement = recovery->ElementStart;
+            }
+            if (initialRecoveryBytes < recovery->Buffer.Bytes) {
+                initialRecoveryBytes = recovery->Buffer.Bytes;
+            }
+        }
+    }
+
+    // If we have not hit a threshold yet:
+    if (firstKeptElement < kDecoderRemoveThreshold) {
+        return;
+    }
+
+    const unsigned firstKeptSubwindow  = firstKeptElement / kSubwindowSize;
     const unsigned removedElementCount = firstKeptSubwindow * kSubwindowSize;
     SIAMESE_DEBUG_ASSERT(firstKeptSubwindow >= 1);
     SIAMESE_DEBUG_ASSERT(Subwindows.GetSize() > firstKeptSubwindow);
@@ -1741,37 +1865,44 @@ void DecoderPacketWindow::RemoveElements()
 
     Logger.Info("********* Removing up to ", removedElementCount);
 
-    // If there is a running sum:
-    if (IsRunningSums())
+    // If there is a sum we should be maintaining:
+    if (seenSum)
     {
+        unsigned sumElementStart = ColumnToElement(targetSumStartColumn);
+
         // If the sum start point is changing:
-        if (SumColumnStart != removalPoint.SumStartColumn)
+        if (SumColumnStart != targetSumStartColumn ||
+            SumColumnCount > targetSumColumnCount)
         {
             // If the new sum start point is already clipped:
-            const unsigned elementStart = ColumnToElement(removalPoint.SumStartColumn);
-            if (InvalidElement(elementStart))
+            if (InvalidElement(sumElementStart))
             {
                 EmergencyDisabled = true;
-                Logger.Error("RemoveElements failed: Removal point sum start is clipped! removalPoint.SumStartColumn=", removalPoint.SumStartColumn, ", ColumnStart=", ColumnStart);
+                Logger.Error("RemoveElements failed: Removal point sum start is clipped! " \
+                    "targetSumStartColumn=", targetSumStartColumn, ", ColumnStart=", ColumnStart);
                 SIAMESE_DEBUG_BREAK(); // Should never happen
                 return;
             }
 
-            ResetSums(elementStart);
+            ResetSums(sumElementStart);
 
-            SumColumnStart = removalPoint.SumStartColumn;
-            SumColumnCount = removalPoint.SumColumnCount;
+            SumColumnStart = targetSumStartColumn;
+            SumColumnCount = targetSumColumnCount;
         }
         else
         {
             // Determine sum start element
-            unsigned sumElementStart = ColumnToElement(removalPoint.SumStartColumn);
-            if (InvalidElement(sumElementStart))
+            if (InvalidElement(sumElementStart)) {
                 sumElementStart = 0;
+            }
 
-            if (!StartSums(sumElementStart, removalPoint.InitialRecoveryBytes))
+            // Get ready to accumulate new sums
+            if (!StartSums(sumElementStart, initialRecoveryBytes))
             {
-                Logger.Error("RemoveElements.StartSums failed. removalPoint.SumStartColumn=", removalPoint.SumStartColumn, ", sumElementStart=", sumElementStart, ", bytes=", removalPoint.InitialRecoveryBytes);
+                Logger.Error("RemoveElements.StartSums failed. targetSumStartColumn=",
+                    targetSumStartColumn, ", sumElementStart=", sumElementStart,
+                    ", initialRecoveryBytes=", initialRecoveryBytes);
+                SIAMESE_DEBUG_BREAK();
                 EmergencyDisabled = true;
                 return;
             }
@@ -1782,23 +1913,40 @@ void DecoderPacketWindow::RemoveElements()
         {
             for (unsigned sumIndex = 0; sumIndex < kColumnSumCount; ++sumIndex)
             {
+                // Roll up this lane, sum
                 GetSum(laneIndex, sumIndex, removedElementCount);
 
                 // If the start element is getting clipped:
-                if (Lanes[laneIndex].Sums[sumIndex].ElementStart >= removedElementCount)
+                if (Lanes[laneIndex].Sums[sumIndex].ElementStart >= removedElementCount) {
                     Lanes[laneIndex].Sums[sumIndex].ElementStart -= removedElementCount;
-                else
+                }
+                else {
                     Lanes[laneIndex].Sums[sumIndex].ElementStart = laneIndex;
+                }
 
                 SIAMESE_DEBUG_ASSERT(Lanes[laneIndex].Sums[sumIndex].ElementEnd >= removedElementCount);
                 Lanes[laneIndex].Sums[sumIndex].ElementEnd -= removedElementCount;
             }
         }
     }
+    else
+    {
+        /*
+            Recovery list only contains Cauchy rows:
+
+            Note that if we see Cauchy rows again it means the encoder reset its sums small enough to
+            start sending those again, so we can use that as an indicator to reset ours also.
+
+            Reset the sum column count to zero, which will prevent us from rolling up any running sums.
+            Furthermore when a sum is encountered it will be reset during recovery.
+        */
+        SumColumnCount = 0;
+    }
 
     // Reset windows before putting them on the back
-    for (unsigned i = 0; i < firstKeptSubwindow; ++i)
+    for (unsigned i = 0; i < firstKeptSubwindow; ++i) {
         Subwindows.GetRef(i)->Reset();
+    }
 
     // Shift kept subwindows to the front of the vector:
 
@@ -2021,7 +2169,7 @@ bool RecoveryMatrixState::GenerateMatrix()
     // For each row to fill:
     for (unsigned i = startRow; i < rows; ++i, rowData += stride)
     {
-        RecoveryPacket* recovery        = Rows.GetRef(i).Recovery;
+        RecoveryPacket* recovery = Rows.GetRef(i).Recovery;
         const RecoveryMetadata metadata = recovery->Metadata;
 
 #ifdef SIAMESE_ENABLE_CAUCHY
@@ -2430,19 +2578,18 @@ void RecoveryPacketList::Insert(RecoveryPacket* recovery)
 
     // If inserting at head or somewhere in the middle:
     // Invalidate the checked region because a smaller solution may be available
-    if (!prev || next)
+    if (!prev || next) {
         CheckedRegion->Reset();
+    }
     // Note that for the case where we insert at the end of a non-empty list we do
     // not reset the checked region.  This is the common case where recovery data is
     // received in order.
 
     ++RecoveryPacketCount;
 
-    // Update last recovery data
-    LastRecovery.FirstKeptElement     = recovery->ElementStart;
-    LastRecovery.InitialRecoveryBytes = recovery->Buffer.Bytes;
-    LastRecovery.SumColumnCount       = recovery->Metadata.SumCount;
-    LastRecovery.SumStartColumn       = recovery->Metadata.ColumnStart;
+    // Update the last received recovery metadata
+    LastRecoveryMetadata = recovery->Metadata;
+    LastRecoveryBytes = recovery->Buffer.Bytes;
 }
 
 void RecoveryPacketList::DeletePacketsBefore(const unsigned element)
@@ -2485,15 +2632,6 @@ void RecoveryPacketList::DecrementElementCounters(const unsigned elementCount)
 
         SIAMESE_DEBUG_ASSERT(recovery->ElementStart >= elementCount);
         recovery->ElementStart -= elementCount;
-    }
-
-    // If we didn't clip the last recovery packet data:
-    if (LastRecovery.FirstKeptElement >= elementCount)
-        LastRecovery.FirstKeptElement -= elementCount;
-    else
-    {
-        Logger.Warning("Just clipped off the last recovery packet data from RecoveryPacketList");
-        LastRecovery = RemovalPoint();
     }
 }
 

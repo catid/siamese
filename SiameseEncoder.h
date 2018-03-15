@@ -39,7 +39,6 @@
 
 #include "SiameseCommon.h"
 
-
 namespace siamese {
 
 
@@ -132,13 +131,13 @@ struct EncoderPacketWindow
     unsigned SumErasedCount = 0;
 
     /// Allocated Subwindows
-    LightVector<EncoderSubwindow*> Subwindows;
+    pktalloc::LightVector<EncoderSubwindow*> Subwindows;
 
     /// Running summations for each lane
     EncoderColumnLane Lanes[kColumnLaneCount];
 
     /// Temporary workspace reused each time subwindows must be shifted
-    LightVector<EncoderSubwindow*> SubwindowsShift;
+    pktalloc::LightVector<EncoderSubwindow*> SubwindowsShift;
 
     /// If input is invalid or we run out of memory, the encoder is disabled
     /// to prevent it from allowing exploits to run or cause crashes

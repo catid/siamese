@@ -188,8 +188,14 @@ SIAMESE_FORCE_INLINE unsigned GetRowOpcode(unsigned lane, unsigned row)
 */
 #ifdef SIAMESE_ENABLE_CAUCHY
 
-/// Number of input packets at which we switch over to Siamese codec from Cauchy
+/// At/below this number of packets, we use a Cauchy coefficients for better
+/// recovery properties and faster encoding.
+/// For example, a window of 64 packets will use Cauchy instead of Siamese sums.
 #define SIAMESE_CAUCHY_THRESHOLD 64 /**< Better under 6 recovery than Siamese */
+
+/// If the window shrinks at/below this number of packets, we switch back to
+/// using Cauchy coefficients for matrix rows.  This should be less than the
+/// SIAMESE_CAUCHY_THRESHOLD to allow some hysteresis (fuzzy-logic).
 #define SIAMESE_SUM_RESET_THRESHOLD 32 /**< Reset sums if window shrinks */
 
 static const unsigned kCauchyMaxColumns = SIAMESE_CAUCHY_THRESHOLD;

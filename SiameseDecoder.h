@@ -149,7 +149,8 @@ struct RecoveryPacket
     /// Metadata attached to packet
     RecoveryMetadata Metadata;
 
-    /// Element in the window where this packet starts LDPC/Cauchy protection
+    /// Element in the window where this packet starts LDPC/Cauchy protection.
+    /// To be clear for Siamese rows this does not reflect the sum start.
     /// Note: The metadata ColumnStart can be before this element for rows that
     /// have long running sums, where the old data has been accumulated into sums
     /// and erased from memory.
@@ -215,42 +216,6 @@ struct CheckedRegionState
 
 
 //------------------------------------------------------------------------------
-// RemovalPoint
-
-/// Describes a point at which we can clip old data from the window
-struct RemovalPoint
-{
-    /// First window element we want to keep in memory.
-    /// This is either the first LDPC element from recovery packet metadata,
-    /// or it is the first Cauchy range in recovery data we have received,
-    /// whichever is smaller.
-    unsigned FirstKeptElement = 0;
-
-    /// First sum column for running sum
-    unsigned SumStartColumn = 0;
-
-    /// Number of columns in the sum
-    unsigned SumColumnCount = 0;
-
-    /// Initial number of bytes in the recovery packet data
-    unsigned InitialRecoveryBytes = 0;
-
-
-    /// Returns true if no data is available
-    SIAMESE_FORCE_INLINE bool IsEmpty() const
-    {
-        return InitialRecoveryBytes == 0;
-    }
-
-    /// Returns true if there is no sum information
-    SIAMESE_FORCE_INLINE bool IsCauchyOnly() const
-    {
-        return SumColumnCount == 0;
-    }
-};
-
-
-//------------------------------------------------------------------------------
 // RecoveryPacketList
 
 struct RecoveryPacketList
@@ -265,9 +230,9 @@ struct RecoveryPacketList
     /// Number of recovery packets in the list
     unsigned RecoveryPacketCount = 0;
 
-    /// When recovery packet count == 0, this is the last seen metadata
-    RemovalPoint LastRecovery;
-
+    /// Last recovery packet metadata
+    RecoveryMetadata LastRecoveryMetadata;
+    unsigned LastRecoveryBytes = 0;
 
     SIAMESE_FORCE_INLINE bool IsEmpty() const
     {
@@ -338,7 +303,7 @@ struct DecoderPacketWindow
     unsigned NextExpectedElement = 0;
 
     /// Allocated Subwindows
-    LightVector<DecoderSubwindow*> Subwindows;
+    pktalloc::LightVector<DecoderSubwindow*> Subwindows;
 
     /// Set of lanes we're maintaining
     DecoderColumnLane Lanes[kColumnLaneCount];
@@ -346,14 +311,14 @@ struct DecoderPacketWindow
     unsigned SumColumnCount = 0;
 
     /// Packets returned by RecoverOriginalPackets() on success
-    LightVector<SiameseOriginalPacket> RecoveredPackets;
+    pktalloc::LightVector<SiameseOriginalPacket> RecoveredPackets;
     bool HasRecoveredPackets = false;
 
     /// List of columns that have been recovered
-    LightVector<unsigned> RecoveredColumns;
+    pktalloc::LightVector<unsigned> RecoveredColumns;
 
     /// Temporary workspace reused each time subwindows must be shifted
-    LightVector<DecoderSubwindow*> SubwindowsShift;
+    pktalloc::LightVector<DecoderSubwindow*> SubwindowsShift;
 
     /// If input is invalid or we run out of memory, the decoder is disabled
     /// to prevent it from allowing exploits to run or cause crashes
@@ -389,8 +354,9 @@ struct DecoderPacketWindow
     {
         SIAMESE_DEBUG_ASSERT(element < Count && laneIndex < kColumnLaneCount);
         unsigned nextElement = element - (element % kColumnLaneCount) + laneIndex;
-        if (nextElement < element)
+        if (nextElement < element) {
             nextElement += kColumnLaneCount;
+        }
         SIAMESE_DEBUG_ASSERT(nextElement >= element);
         SIAMESE_DEBUG_ASSERT(nextElement % kColumnLaneCount == laneIndex);
         SIAMESE_DEBUG_ASSERT(nextElement < Count + kColumnLaneCount);
@@ -446,9 +412,9 @@ struct DecoderPacketWindow
     /// Removes elements from the front if they are no longer needed
     void RemoveElements();
 
-    /// Identify the location in the sum sequence where we can safely remove from
-    /// without removing data that is useful for recovery
-    bool IdentifyRemovalPoint(RemovalPoint& pointOut);
+    /// Returns the first window element that must be kept for recovery.
+    /// This is used to determine how many window elements to remove
+    unsigned GetFirstUsedWindowElement();
 };
 
 
@@ -481,7 +447,7 @@ struct RecoveryMatrixState
         /// must be updated to reflect their growth
         unsigned MatrixColumnCount = 0;
     };
-    LightVector<RowInfo> Rows;
+    pktalloc::LightVector<RowInfo> Rows;
 
     struct ColumnInfo
     {
@@ -494,7 +460,7 @@ struct RecoveryMatrixState
         /// Column multiplier
         uint8_t CX = 0;
     };
-    LightVector<ColumnInfo> Columns;
+    pktalloc::LightVector<ColumnInfo> Columns;
 
     /// NextCheckStart value from the last time we populated columns
     unsigned PreviousNextCheckStart = 0;
@@ -504,7 +470,7 @@ struct RecoveryMatrixState
 
     /// Array of pivots used for when rows need to be swapped
     /// This allows us to swap indices rather than swap whole rows to reduce memory accesses
-    LightVector<unsigned> Pivots;
+    pktalloc::LightVector<unsigned> Pivots;
 
     /// Pivot to resume at when we get more data
     unsigned GEResumePivot = 0;
