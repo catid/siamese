@@ -1242,7 +1242,7 @@ static bool GenerateTestMatrix_Siamese_MoreCX(GF256Matrix& matrix, int row_start
 
             static const unsigned kLaneCount = 8;
             const unsigned lane = (col % kLaneCount);
-            uint32_t opcode = siamese::WellonsFastHash32(lane + (row + 1) * kLaneCount) & 63;
+            uint32_t opcode = siamese::WellonsFastHash32(lane + (row + 2) * kLaneCount) & 63;
 
             if (opcode == 0)
                 opcode = 16;

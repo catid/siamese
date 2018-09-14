@@ -54,7 +54,7 @@ using namespace std;
 // This experiment uses FEC instead of retransmission to see how it performs
 //#define HARQ_RETRANSMIT_WITH_FEC
 
-#define VERBOSE_STREAMING_LOGS
+//#define VERBOSE_STREAMING_LOGS
 
 static const unsigned kSeed = 1013;
 

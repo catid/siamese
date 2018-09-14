@@ -193,7 +193,7 @@ SIAMESE_FORCE_INLINE unsigned GetRowOpcode(unsigned lane, unsigned row)
 
     // This offset tunes the quality of the upper left of the generated matrix,
     // which is encountered in practice for the first block of input data
-    static const unsigned kArbitraryOffset = 0;
+    static const unsigned kArbitraryOffset = 2;
 
     const uint32_t opcode = WellonsFastHash32(lane + (row + kArbitraryOffset) * kColumnLaneCount) & kSumMask;
     return (opcode == 0) ? kZeroValue : (unsigned)opcode;
