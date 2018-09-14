@@ -974,7 +974,7 @@ static uint8_t SiameseGetCX(unsigned col)
 #if 0
     uint8_t CX = ShuffledPrimes[col % PrimesCount];
 #elif 0
-    uint8_t CX = 3 + (WellonsFastHash32(col * 17) % 253);
+    uint8_t CX = 3 + (Int32Hash(col * 17) % 253);
 #elif 0
     uint8_t CX = 1 + (uint8_t)((col * 199) % 255);
 #elif 1
@@ -989,7 +989,7 @@ static uint8_t SiameseGetCX(unsigned col)
 inline unsigned Test_GetRowOpcode(unsigned lane, unsigned row)
 {
 #if 1
-    uint32_t opcode = siamese::WellonsFastHash32(lane + row * kSiameseLaneCount) & 15;
+    uint32_t opcode = siamese::Int32Hash(lane + row * kSiameseLaneCount) & 15;
 #else
     static const int kGrayPeriod = 255;
     const int kLaneMult = 63;
@@ -1018,7 +1018,7 @@ inline unsigned Test_GetRowOpcode(unsigned lane, unsigned row)
 // Calculate 1-bit xor swap for the given column
 inline unsigned GetColumnXorSwap(unsigned column)
 {
-    return (siamese::WellonsFastHash32(column) >> 2) & 1;
+    return (siamese::Int32Hash(column) >> 2) & 1;
 }
 
 static bool GenerateTestMatrix_Siamese(GF256Matrix& matrix, int row_start, int row_end, int col_start, int col_end)
@@ -1053,7 +1053,7 @@ static bool GenerateTestMatrix_Siamese(GF256Matrix& matrix, int row_start, int r
             *val = 0;
 
             const unsigned lane = (col % kSiameseLaneCount);
-            uint32_t opcode = siamese::WellonsFastHash32(lane + row * (kSiameseLaneCount * 2)) & 15;
+            uint32_t opcode = siamese::Int32Hash(lane + row * (kSiameseLaneCount * 2)) & 15;
             if (opcode == 0)
                 opcode = 8;
 
@@ -1130,7 +1130,7 @@ static bool GenerateTestMatrix_Siamese_MoreRX(GF256Matrix& matrix, int row_start
             *val = 0;
 
             const unsigned lane = (col % kSiameseLaneCount);
-            uint32_t opcode = siamese::WellonsFastHash32(lane + row * kSiameseLaneCount) & 31;
+            uint32_t opcode = siamese::Int32Hash(lane + row * kSiameseLaneCount) & 31;
 
             if (opcode == 0)
                 opcode = 16;
@@ -1242,7 +1242,7 @@ static bool GenerateTestMatrix_Siamese_MoreCX(GF256Matrix& matrix, int row_start
 
             static const unsigned kLaneCount = 8;
             const unsigned lane = (col % kLaneCount);
-            uint32_t opcode = siamese::WellonsFastHash32(lane + (row + 2) * kLaneCount) & 63;
+            uint32_t opcode = siamese::Int32Hash(lane + (row + 3) * kLaneCount) & 63;
 
             if (opcode == 0)
                 opcode = 16;
