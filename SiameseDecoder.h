@@ -230,7 +230,7 @@ struct RecoveryPacketList
     /// Number of recovery packets in the list
     unsigned RecoveryPacketCount = 0;
 
-    /// Last recovery packet metadata
+    /// Last recovery packet metadata that was received in order
     RecoveryMetadata LastRecoveryMetadata;
     unsigned LastRecoveryBytes = 0;
 
@@ -240,8 +240,9 @@ struct RecoveryPacketList
         return RecoveryPacketCount == 0;
     }
 
-    /// Insert recovery packet into sorted list
-    void Insert(RecoveryPacket* packet);
+    /// Insert recovery packet into sorted list.
+    /// Out of order RecoveryPackets will not update LastRecoveryMetadata
+    void Insert(RecoveryPacket* packet, bool outOfOrder);
 
     /// Delete all packets before this element
     void DeletePacketsBefore(const unsigned element);
@@ -605,6 +606,10 @@ protected:
 
     /// Product sum for current row
     GrowingAlignedDataBuffer ProductSum;
+
+    /// Filter data that is received out of order by comparing its extent to
+    /// the latest column seen so far
+    unsigned LatestColumn = 0;
 
 
     /// Handle single recovery packet

@@ -145,17 +145,43 @@ static const unsigned kPairAddRate = 16;
 /// of this size in order to reduce the cost of elimination
 static const unsigned kSubwindowSize = kColumnLaneCount * 8;
 
-/// Thomas Wang's 32-bit -> 32-bit integer hash function
-/// http://burtleburtle.net/bob/hash/integer.html
-SIAMESE_FORCE_INLINE uint32_t Int32Hash(uint32_t key)
+// Perfect portable integer hash function from Chris Wellons
+// https://nullprogram.com/blog/2018/07/31/
+// exact bias: 0.020888578919738908
+SIAMESE_FORCE_INLINE uint32_t WellonsPerfectHash32(uint32_t x)
 {
-    key += ~(key << 15);
-    key ^= (key >> 10);
-    key += (key << 3);
-    key ^= (key >> 6);
-    key += ~(key << 11);
-    key ^= (key >> 16);
-    return key;
+    x ^= x >> 17;
+    x *= UINT32_C(0xed5ad4bb);
+    x ^= x >> 11;
+    x *= UINT32_C(0xac4c1b51);
+    x ^= x >> 15;
+    x *= UINT32_C(0x31848bab);
+    x ^= x >> 14;
+    return x;
+}
+
+// Fast portable integer hash function from Chris Wellons
+// https://nullprogram.com/blog/2018/07/31/
+// exact bias: 0.17353355999581582
+SIAMESE_FORCE_INLINE uint32_t WellonsFastHash32(uint32_t x)
+{
+    x ^= x >> 16;
+    x *= UINT32_C(0x7feb352d);
+    x ^= x >> 15;
+    x *= UINT32_C(0x846ca68b);
+    x ^= x >> 16;
+    return x;
+}
+
+// Inverts the WellonsFastHash32() function
+SIAMESE_FORCE_INLINE uint32_t WellonsFastHashInverse32(uint32_t x)
+{
+    x ^= x >> 16;
+    x *= UINT32_C(0x43021123);
+    x ^= x >> 15 ^ x >> 30;
+    x *= UINT32_C(0x1d69e2a5);
+    x ^= x >> 16;
+    return x;
 }
 
 /// Calculate operation code for the given row and lane
@@ -167,9 +193,9 @@ SIAMESE_FORCE_INLINE unsigned GetRowOpcode(unsigned lane, unsigned row)
 
     // This offset tunes the quality of the upper left of the generated matrix,
     // which is encountered in practice for the first block of input data
-    static const unsigned kArbitraryOffset = 3;
+    static const unsigned kArbitraryOffset = 0;
 
-    const uint32_t opcode = Int32Hash(lane + (row + kArbitraryOffset) * kColumnLaneCount) & kSumMask;
+    const uint32_t opcode = WellonsFastHash32(lane + (row + kArbitraryOffset) * kColumnLaneCount) & kSumMask;
     return (opcode == 0) ? kZeroValue : (unsigned)opcode;
 }
 

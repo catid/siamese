@@ -181,6 +181,13 @@ struct EncoderPacketWindow
         return &(Subwindows.GetRef(windowElement / kSubwindowSize)->LastSendMsec[windowElement % kSubwindowSize]);
     }
 
+    /// How many slots remain in the window?
+    SIAMESE_FORCE_INLINE unsigned GetRemainingSlots() const
+    {
+        SIAMESE_DEBUG_ASSERT(SIAMESE_MAX_PACKETS >= Count);
+        return SIAMESE_MAX_PACKETS - Count;
+    }
+
     /// Append a packet to the end of the set
     SiameseResult Add(SiameseOriginalPacket& packet);
 
@@ -289,13 +296,13 @@ struct EncoderAcknowledgementState
     bool OnAcknowledgementData(const uint8_t* data, unsigned bytes);
 
     /// Returns true if the column iterator is pointing at the first column
-    bool IsIteratorAtFront() const
+    SIAMESE_FORCE_INLINE bool IsIteratorAtFront() const
     {
         return LossColumn == NextColumnExpected;
     }
 
     /// Returns true if there are any negative acknowledgements
-    bool HasNegativeAcknowledgements() const
+    SIAMESE_FORCE_INLINE bool HasNegativeAcknowledgements() const
     {
         return DataBytes > 0;
     }
@@ -332,14 +339,19 @@ class Encoder
 public:
     Encoder();
 
+    SIAMESE_FORCE_INLINE unsigned GetRemainingSlots() const
+    {
+        return Window.GetRemainingSlots();
+    }
+
     /// Add an original data packet to the encoder
-    SiameseResult Add(SiameseOriginalPacket& packet)
+    SIAMESE_FORCE_INLINE SiameseResult Add(SiameseOriginalPacket& packet)
     {
         return Window.Add(packet);
     }
 
     /// Remove original data packet up to the given column
-    void RemoveBefore(unsigned firstKeptColumn)
+    SIAMESE_FORCE_INLINE void RemoveBefore(unsigned firstKeptColumn)
     {
         Window.RemoveBefore(firstKeptColumn);
     }

@@ -74,6 +74,25 @@ SIAMESE_EXPORT void siamese_encoder_free(
     delete encoder;
 }
 
+SIAMESE_EXPORT SiameseResult siamese_encoder_is_ready(
+    SiameseEncoder encoder_t ///< [in] Encoder to check
+)
+{
+    siamese::Encoder* encoder = reinterpret_cast<siamese::Encoder*>(encoder_t);
+    if (!encoder) {
+        return Siamese_InvalidInput;
+    }
+
+    // Provide a buffer of some packets, to allow the application some slack
+    // to add two packets after checking.  Otherwise it's pretty easy for
+    // app developers to write code that accidentally does that in practice.
+    if (encoder->GetRemainingSlots() <= 2) {
+        return Siamese_MaxPacketsReached;
+    }
+
+    return Siamese_Success;
+}
+
 SIAMESE_EXPORT SiameseResult siamese_encoder_add(
     SiameseEncoder encoder_t,
     SiameseOriginalPacket* packet)

@@ -54,6 +54,7 @@
 
 #include <stdint.h>
 #include <new>
+#include <cstring> // memcpy
 
 #ifdef _WIN32
     #include <intrin.h> // __popcnt64
@@ -462,11 +463,10 @@ enum class Realloc
     + Growing the vector does not initialize the new elements for speed.
     + Does not throw on out-of-memory error.
 */
-template<typename T>
+template<typename T, unsigned kPreallocated = 25> // Tuned for Siamese
 class LightVector
 {
     /// Number of preallocated elements
-    static const unsigned kPreallocated = 25; // Tuned for Siamese
     T PreallocatedData[kPreallocated];
 
     /// Size of vector: Count of elements in the vector
@@ -598,10 +598,64 @@ public:
     Allocator();
     ~Allocator();
 
-    /// Allocation API
+    /**
+        Allocate()
+
+        Allocate some memory from the pre-allocated blocks.
+        If not enough memory is available it will internally add another block.
+        Allocations that cannot fit in a block are performed with calloc().
+
+        Returns a pointer to the allocated memory block that is `bytes` in size.
+        Returns nullptr if memory request could not be satisfied.
+    */
     uint8_t* Allocate(unsigned bytes);
+
+    /**
+        Reallocate()
+
+        Reallocate an allocated memory span to a larger or smaller size.
+        Returns a new pointer if the memory had to be moved.
+
+        The Realloc `behavior` determines if the original data is copied.
+
+        Returns a pointer to the allocated memory block that is `bytes` in size.
+        Returns nullptr if memory request could not be satisfied.
+    */
     uint8_t* Reallocate(uint8_t* ptr, unsigned bytes, Realloc behavior);
+
+    /**
+        Advanced API: Shrink()
+
+        Shrinks a buffer down to a smaller size in memory.
+
+        This is an advanced function that requires some knowledge of how the
+        allocator works to use effectively: It allocates memory after the
+        previous allocation.  So if the latest allocation is shrunk it enables
+        the next allocation that is made to start earlier in memory.  Overall
+        this means that packet queues can take up less space.  For example,
+        when receiving data from a network the size of that data is not known
+        ahead of time.  So a buffer is overallocated, and then once the data
+        size is known the buffer can be shrunk to exactly the size needed.
+
+        If `bytes` provided is more than the size of the current allocation,
+        then no change is performed to the buffer.
+
+        The memory start address is never changed, so the function does not
+        return a new pointer.
+    */
     void Shrink(uint8_t* ptr, unsigned bytes);
+
+    /**
+        Free()
+
+        Free the given memory buffer.
+
+        The application must not access this memory after it is freed.
+
+        Note that if the Allocator object goes out of scope, all allocated
+        memory is automatically freed, so in some cases it is best to not
+        explicitly free all of the allocated buffers.
+    */
     void Free(uint8_t* ptr);
 
     /// Placement new/delete

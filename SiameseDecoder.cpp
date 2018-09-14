@@ -211,10 +211,13 @@ SiameseResult Decoder::GenerateAcknowledgement(
 
         if (pDebugMsg)
         {
-            if (lossCountM1 > 0)
-                *pDebugMsg << " " << AddColumns(Window.ColumnStart, rangeStart) << "-" << Window.ElementToColumn(rangeEnd - 1);
-            else
+            if (lossCountM1 > 0) {
+                *pDebugMsg << " " << AddColumns(Window.ColumnStart, rangeStart)
+                    << "-" << Window.ElementToColumn(rangeEnd - 1);
+            }
+            else {
                 *pDebugMsg << " " << AddColumns(Window.ColumnStart, rangeStart);
+            }
         }
 
         // Take range start relative to the range offset
@@ -271,11 +274,34 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
     Stats.Counts[SiameseDecoderStats_RecoveryCount]++;
     Stats.Counts[SiameseDecoderStats_RecoveryBytes] += packet.DataBytes;
 
+    // Check if recovery packet was received out of order
+    bool outOfOrder = IsColumnDeltaNegative(metadata.ColumnStart + metadata.SumCount - LatestColumn);
+    if (!outOfOrder) {
+        // Update the latest received column
+        LatestColumn = (metadata.ColumnStart + metadata.SumCount) % kColumnPeriod;
+    }
+
+#if 0
+    if (outOfOrder)
+    {
+        Logger.Warning("Ignoring recovery packet received out of order");
+        Stats.Counts[SiameseDecoderStats_DupedRecoveryCount]++;
+        return Siamese_Success; // This packet cannot be used for recovery
+    }
+#endif
+
     unsigned elementStart, elementEnd;
 
     // Check if we need this recovery packet:
     if (Window.Count <= 0)
     {
+        if (outOfOrder)
+        {
+            Logger.Warning("Recovery packet cannot be used because it was received by an empty window out of order");
+            Stats.Counts[SiameseDecoderStats_DupedRecoveryCount]++;
+            return Siamese_Success; // This packet cannot be used for recovery
+        }
+
         Logger.Info("Got first recovery packet: ColumnStart=", metadata.ColumnStart, " SumCount=", metadata.SumCount, " LDPC_Count=", metadata.LDPCCount, " Row=", metadata.Row);
 
         Window.ColumnStart = metadata.ColumnStart;
@@ -319,6 +345,13 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
         // Ignore data we already have
         if (elementEnd <= Window.NextExpectedElement)
         {
+            if (outOfOrder)
+            {
+                Logger.Warning("Recovery packet does not contain new data and is out of order, so ignoring it");
+                Stats.Counts[SiameseDecoderStats_DupedRecoveryCount]++;
+                return Siamese_Success; // This packet cannot be used for recovery
+            }
+
             Logger.Debug("Ignoring unnecessary recovery packet for data we received successfully");
             if (elementStart >= kDecoderRemoveThreshold)
             {
@@ -407,7 +440,7 @@ SiameseResult Decoder::AddRecovery(const SiameseRecoveryPacket& packet)
     recovery->ElementEnd   = elementEnd;
 
     // Insert it into the sorted packet list
-    RecoveryPackets.Insert(recovery);
+    RecoveryPackets.Insert(recovery, outOfOrder);
 
     // Remove elements from the front if possible
     if (elementStart >= kDecoderRemoveThreshold) {
@@ -1877,10 +1910,10 @@ void DecoderPacketWindow::RemoveElements()
             // If the new sum start point is already clipped:
             if (InvalidElement(sumElementStart))
             {
-                EmergencyDisabled = true;
+                SIAMESE_DEBUG_BREAK(); // Should never happen
                 Logger.Error("RemoveElements failed: Removal point sum start is clipped! " \
                     "targetSumStartColumn=", targetSumStartColumn, ", ColumnStart=", ColumnStart);
-                SIAMESE_DEBUG_BREAK(); // Should never happen
+                EmergencyDisabled = true;
                 return;
             }
 
@@ -2531,7 +2564,7 @@ void CheckedRegionState::DecrementElementCounters(const unsigned elementCount)
 //------------------------------------------------------------------------------
 // RecoveryPacketList
 
-void RecoveryPacketList::Insert(RecoveryPacket* recovery)
+void RecoveryPacketList::Insert(RecoveryPacket* recovery, bool outOfOrder)
 {
     RecoveryPacket* prev = Tail;
     RecoveryPacket* next = nullptr;
@@ -2557,24 +2590,30 @@ void RecoveryPacketList::Insert(RecoveryPacket* recovery)
         */
         if (recoveryEnd >= prevEnd)
         {
-            if (recoveryEnd > prevEnd)
+            if (recoveryEnd > prevEnd) {
                 break;
-            if (IsColumnDeltaNegative(SubtractColumns(recoveryStart, prevStart)))
+            }
+            if (IsColumnDeltaNegative(SubtractColumns(recoveryStart, prevStart))) {
                 break;
+            }
         }
     }
 
     // Insert into linked list
     recovery->Next = next;
     recovery->Prev = prev;
-    if (prev)
+    if (prev) {
         prev->Next = recovery;
-    else
+    }
+    else {
         Head = recovery;
-    if (next)
+    }
+    if (next) {
         next->Prev = recovery;
-    else
+    }
+    else {
         Tail = recovery;
+    }
 
     // If inserting at head or somewhere in the middle:
     // Invalidate the checked region because a smaller solution may be available
@@ -2587,9 +2626,12 @@ void RecoveryPacketList::Insert(RecoveryPacket* recovery)
 
     ++RecoveryPacketCount;
 
-    // Update the last received recovery metadata
-    LastRecoveryMetadata = recovery->Metadata;
-    LastRecoveryBytes = recovery->Buffer.Bytes;
+    if (!outOfOrder)
+    {
+        // Update the last received recovery metadata
+        LastRecoveryMetadata = recovery->Metadata;
+        LastRecoveryBytes = recovery->Buffer.Bytes;
+    }
 }
 
 void RecoveryPacketList::DeletePacketsBefore(const unsigned element)

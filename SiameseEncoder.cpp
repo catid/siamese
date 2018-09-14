@@ -44,8 +44,9 @@ namespace siamese {
 
 EncoderStats::EncoderStats()
 {
-    for (unsigned i = 0; i < SiameseEncoderStats_Count; ++i)
+    for (unsigned i = 0; i < SiameseEncoderStats_Count; ++i) {
         Counts[i] = 0;
+    }
 }
 
 
@@ -83,11 +84,14 @@ void EncoderPacketWindow::ClearWindow()
 
 SiameseResult EncoderPacketWindow::Add(SiameseOriginalPacket& packet)
 {
-    if (EmergencyDisabled)
+    if (EmergencyDisabled) {
         return Siamese_Disabled;
-    if (Count >= SIAMESE_MAX_PACKETS)
-    {
-        SIAMESE_DEBUG_BREAK(); // Invalid input
+    }
+
+    if (GetRemainingSlots() <= 0) {
+        // This is not invalid input - The application often does not have
+        // control over how much data it tries to send.  Instead it must
+        // listen for our feedback return code to decide when to slow down.
         return Siamese_MaxPacketsReached;
     }
 
@@ -113,8 +117,9 @@ SiameseResult EncoderPacketWindow::Add(SiameseOriginalPacket& packet)
         }
     }
 
-    if (Count > 0)
+    if (Count > 0) {
         ++Count;
+    }
     else
     {
         // Start a new window:
@@ -143,10 +148,12 @@ SiameseResult EncoderPacketWindow::Add(SiameseOriginalPacket& packet)
     const unsigned originalBytes = original->Buffer.Bytes;
     const unsigned laneIndex     = column % kColumnLaneCount;
     EncoderColumnLane& lane      = Lanes[laneIndex];
-    if (lane.LongestPacket < originalBytes)
+    if (lane.LongestPacket < originalBytes) {
         lane.LongestPacket = originalBytes;
-    if (LongestPacket < originalBytes)
+    }
+    if (LongestPacket < originalBytes) {
         LongestPacket = originalBytes;
+    }
 
     Stats->Counts[SiameseEncoderStats_OriginalCount]++;
     Stats->Counts[SiameseEncoderStats_OriginalBytes] += packet.DataBytes;
@@ -166,16 +173,18 @@ void EncoderPacketWindow::StartNewWindow(unsigned column)
 
     // Reset longest packet
     LongestPacket = 0;
-    for (unsigned laneIndex = 0; laneIndex < kColumnLaneCount; ++laneIndex)
+    for (unsigned laneIndex = 0; laneIndex < kColumnLaneCount; ++laneIndex) {
         Lanes[laneIndex].LongestPacket = 0;
+    }
 
     Logger.Info(">>> Starting a new window from column ", ColumnStart);
 }
 
 void EncoderPacketWindow::RemoveBefore(unsigned firstKeptColumn)
 {
-    if (EmergencyDisabled)
+    if (EmergencyDisabled) {
         return;
+    }
 
     // Convert column to element, handling wrap-around:
     const unsigned firstKeptElement = ColumnToElement(firstKeptColumn);
@@ -184,8 +193,9 @@ void EncoderPacketWindow::RemoveBefore(unsigned firstKeptColumn)
     if (InvalidElement(firstKeptElement))
     {
         // If the element was before the window:
-        if (IsColumnDeltaNegative(firstKeptElement))
+        if (IsColumnDeltaNegative(firstKeptElement)) {
             Logger.Info("Remove before column ", firstKeptColumn, " - Ignored before window");
+        }
         else
         {
             // Removed everything
@@ -199,8 +209,9 @@ void EncoderPacketWindow::RemoveBefore(unsigned firstKeptColumn)
         Logger.Info("Remove before column ", firstKeptColumn, " element ", firstKeptElement);
 
         // Mark these elements for removal next time we generate output
-        if (FirstUnremovedElement < firstKeptElement)
+        if (FirstUnremovedElement < firstKeptElement) {
             FirstUnremovedElement = firstKeptElement;
+        }
     }
 }
 
@@ -251,18 +262,23 @@ void EncoderPacketWindow::RemoveElements()
             }
         }
 
-        if (removedElementCount > SumStartElement)
+        if (removedElementCount > SumStartElement) {
             SumErasedCount += removedElementCount - SumStartElement;
+        }
 
-        if (SumEndElement > removedElementCount)
+        if (SumEndElement > removedElementCount) {
             SumEndElement -= removedElementCount;
-        else
+        }
+        else {
             SumEndElement = 0;
+        }
 
-        if (SumStartElement > removedElementCount)
+        if (SumStartElement > removedElementCount) {
             SumStartElement -= removedElementCount;
-        else
+        }
+        else {
             SumStartElement = 0;
+        }
     }
 
     // Shift kept subwindows to the front of the vector:
@@ -318,22 +334,26 @@ void EncoderPacketWindow::RemoveElements()
     {
         OriginalPacket* original     = GetWindowElement(i);
         const unsigned originalBytes = original->Buffer.Bytes;
-        if (longestPacket < originalBytes)
+        if (longestPacket < originalBytes) {
             longestPacket = originalBytes;
+        }
         SIAMESE_DEBUG_ASSERT(original->Column % kColumnLaneCount == i % kColumnLaneCount);
         const unsigned laneIndex = i % kColumnLaneCount;
-        if (laneLongest[laneIndex] < originalBytes)
+        if (laneLongest[laneIndex] < originalBytes) {
             laneLongest[laneIndex] = originalBytes;
+        }
     }
 
     // Update longest packet fields
     LongestPacket = longestPacket;
-    for (unsigned laneIndex = 0; laneIndex < kColumnLaneCount; ++laneIndex)
+    for (unsigned laneIndex = 0; laneIndex < kColumnLaneCount; ++laneIndex) {
         Lanes[laneIndex].LongestPacket = laneLongest[laneIndex];
+    }
 
     // If there are no running sums:
-    if (SumEndElement <= SumStartElement)
+    if (SumEndElement <= SumStartElement) {
         ResetSums(FirstUnremovedElement);
+    }
 }
 
 const GrowingAlignedDataBuffer* EncoderPacketWindow::GetSum(unsigned laneIndex, unsigned sumIndex, unsigned elementEnd)
@@ -372,14 +392,16 @@ const GrowingAlignedDataBuffer* EncoderPacketWindow::GetSum(unsigned laneIndex, 
             SIAMESE_DEBUG_ASSERT(original->Buffer.Bytes <= sum.Bytes || element < FirstUnremovedElement);
 
             // Sum += PacketData
-            if (sumIndex == 0)
+            if (sumIndex == 0) {
                 gf256_add_mem(sum.Data, original->Buffer.Data, addBytes);
+            }
             else
             {
                 // Sum += CX[2] * PacketData
                 uint8_t CX = GetColumnValue(column);
-                if (sumIndex == 2)
+                if (sumIndex == 2) {
                     CX = gf256_sqr(CX);
+                }
                 gf256_muladd_mem(sum.Data, CX, original->Buffer.Data, addBytes);
             }
 
