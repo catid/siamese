@@ -508,7 +508,7 @@ protected:
 #ifdef GF256_ALIGNED_ACCESSES
         // Do unaligned operations first
         // Note: Each row starts at an aliged address
-        unsigned unalignedEnd = NextAlignedOffset(columnStart);
+        unsigned unalignedEnd = pktalloc::NextAlignedOffset(columnStart);
         if (unalignedEnd > columnEnd)
             unalignedEnd = columnEnd;
         for (; columnStart < unalignedEnd; ++columnStart)
